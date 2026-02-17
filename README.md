@@ -1,0 +1,1 @@
+# plugin-gpt_smart_content
