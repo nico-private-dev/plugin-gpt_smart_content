@@ -17,7 +17,10 @@ class AICF_API_Handler {
     const API_VERSION = '2023-06-01';
 
     /** Timeout en secondes pour l'appel HTTP */
-    const TIMEOUT = 30;
+    const TIMEOUT = 60;
+
+    /** Tokens minimum par widget pour éviter la troncature */
+    const TOKENS_PER_WIDGET = 300;
 
     /**
      * Génère le contenu pour une liste de widgets via l'API Claude.
@@ -44,8 +47,10 @@ class AICF_API_Handler {
         // Construction du user prompt avec la liste des widgets
         $user_message = $this->build_user_message( $user_prompt, $widgets, $page_id );
 
+        $widget_count = count( $widgets );
+
         // Premier essai
-        $result = $this->call_claude_api( $api_key, $system_prompt, $user_message );
+        $result = $this->call_claude_api( $api_key, $system_prompt, $user_message, $widget_count );
 
         if ( is_wp_error( $result ) ) {
             return $result;
@@ -57,11 +62,12 @@ class AICF_API_Handler {
         // Si le JSON est invalide, on retente une fois avec un prompt plus strict
         if ( is_wp_error( $parsed ) ) {
             $strict_message = $user_message . "\n\n"
-                . "IMPORTANT : ta réponse précédente n'était pas un JSON valide. "
-                . "Réponds UNIQUEMENT avec un objet JSON valide, sans texte avant ou après. "
-                . "Format attendu : {\"widgets\": [{\"id\": \"...\", \"content\": \"...\"}]}";
+                . "CRITICAL INSTRUCTION: Your previous response was not valid JSON. "
+                . "You MUST respond with ONLY a raw JSON object. No markdown, no code blocks, no explanation. "
+                . "Start your response with { and end with }. "
+                . "Exact format: {\"widgets\": [{\"id\": \"WIDGET_ID\", \"content\": \"CONTENT\"}, ...]}";
 
-            $result = $this->call_claude_api( $api_key, $system_prompt, $strict_message );
+            $result = $this->call_claude_api( $api_key, $system_prompt, $strict_message, $widget_count );
 
             if ( is_wp_error( $result ) ) {
                 return $result;
@@ -131,15 +137,23 @@ class AICF_API_Handler {
      * @param string $api_key        Clé API Anthropic.
      * @param string $system_prompt  System prompt.
      * @param string $user_message   Message utilisateur.
+     * @param int    $widget_count   Nombre de widgets (pour calculer les tokens nécessaires).
      * @return string|WP_Error       Texte de la réponse de Claude, ou WP_Error.
      */
-    private function call_claude_api( $api_key, $system_prompt, $user_message ) {
+    private function call_claude_api( $api_key, $system_prompt, $user_message, $widget_count = 1 ) {
+        // Calculer les tokens nécessaires : au moins TOKENS_PER_WIDGET par widget,
+        // avec un minimum égal au réglage utilisateur
+        $configured_tokens = AICF_Settings::get_max_tokens();
+        $needed_tokens     = max( $configured_tokens, $widget_count * self::TOKENS_PER_WIDGET );
+        // Plafonner à 4096 pour éviter les abus
+        $max_tokens = min( $needed_tokens, 4096 );
+
         $body = array(
-            'model'      => AICF_Settings::get_model(),
-            'max_tokens' => AICF_Settings::get_max_tokens(),
+            'model'       => AICF_Settings::get_model(),
+            'max_tokens'  => $max_tokens,
             'temperature' => AICF_Settings::get_temperature(),
-            'system'     => $system_prompt,
-            'messages'   => array(
+            'system'      => $system_prompt,
+            'messages'    => array(
                 array(
                     'role'    => 'user',
                     'content' => $user_message,
@@ -194,12 +208,22 @@ class AICF_API_Handler {
             );
         }
 
+        // Vérifier si la réponse a été tronquée (stop_reason = max_tokens)
+        $stop_reason = isset( $data['stop_reason'] ) ? $data['stop_reason'] : '';
+        if ( $stop_reason === 'max_tokens' ) {
+            return new WP_Error(
+                'aicf_response_truncated',
+                __( 'La réponse de Claude a été tronquée (trop de contenu pour le nombre de tokens alloué). Essayez avec moins de widgets ou augmentez la limite de tokens dans les réglages.', 'ai-content-filler' ),
+                array( 'status' => 500 )
+            );
+        }
+
         return $data['content'][0]['text'];
     }
 
     /**
      * Parse la réponse texte de Claude pour en extraire le JSON des widgets.
-     * Gère le cas où Claude entoure son JSON de ```json ... ```.
+     * Plusieurs stratégies d'extraction pour gérer tous les formats possibles.
      *
      * @param string $raw_text  Texte brut retourné par Claude.
      * @return array|WP_Error   Tableau [ { id, content } ] ou WP_Error.
@@ -207,40 +231,62 @@ class AICF_API_Handler {
     private function parse_response( $raw_text ) {
         $text = trim( $raw_text );
 
-        // Retirer les éventuels blocs de code markdown
-        if ( preg_match( '/```(?:json)?\s*([\s\S]*?)\s*```/', $text, $matches ) ) {
-            $text = $matches[1];
-        }
-
+        // Stratégie 1 : essayer le texte brut directement (cas idéal)
         $decoded = json_decode( $text, true );
-
-        if ( json_last_error() !== JSON_ERROR_NONE ) {
-            return new WP_Error(
-                'aicf_invalid_json',
-                __( 'La réponse de Claude n\'est pas un JSON valide : ', 'ai-content-filler' ) . json_last_error_msg(),
-                array( 'status' => 500 )
-            );
+        if ( json_last_error() === JSON_ERROR_NONE && $this->is_valid_widget_response( $decoded ) ) {
+            return $decoded['widgets'];
         }
 
-        if ( ! isset( $decoded['widgets'] ) || ! is_array( $decoded['widgets'] ) ) {
-            return new WP_Error(
-                'aicf_missing_widgets',
-                __( 'La réponse JSON ne contient pas la clé "widgets" attendue.', 'ai-content-filler' ),
-                array( 'status' => 500 )
-            );
-        }
-
-        // Validation : chaque widget doit avoir un id et un content
-        foreach ( $decoded['widgets'] as $widget ) {
-            if ( ! isset( $widget['id'] ) || ! isset( $widget['content'] ) ) {
-                return new WP_Error(
-                    'aicf_malformed_widget',
-                    __( 'Un widget dans la réponse JSON n\'a pas de clé "id" ou "content".', 'ai-content-filler' ),
-                    array( 'status' => 500 )
-                );
+        // Stratégie 2 : extraire le contenu d'un bloc markdown ```json ... ```
+        if ( preg_match( '/```(?:json)?\s*(.+?)\s*```/s', $text, $matches ) ) {
+            $decoded = json_decode( trim( $matches[1] ), true );
+            if ( json_last_error() === JSON_ERROR_NONE && $this->is_valid_widget_response( $decoded ) ) {
+                return $decoded['widgets'];
             }
         }
 
-        return $decoded['widgets'];
+        // Stratégie 3 : trouver le premier { et le dernier } pour extraire le JSON
+        $first_brace = strpos( $text, '{' );
+        $last_brace  = strrpos( $text, '}' );
+
+        if ( $first_brace !== false && $last_brace !== false && $last_brace > $first_brace ) {
+            $json_candidate = substr( $text, $first_brace, $last_brace - $first_brace + 1 );
+            $decoded = json_decode( $json_candidate, true );
+            if ( json_last_error() === JSON_ERROR_NONE && $this->is_valid_widget_response( $decoded ) ) {
+                return $decoded['widgets'];
+            }
+        }
+
+        // Aucune stratégie n'a fonctionné
+        // Fournir un extrait de la réponse dans l'erreur pour le debug
+        $preview = mb_substr( $text, 0, 200 );
+        return new WP_Error(
+            'aicf_invalid_json',
+            sprintf(
+                __( 'Impossible d\'extraire un JSON valide de la réponse de Claude. Début de la réponse : "%s"', 'ai-content-filler' ),
+                $preview
+            ),
+            array( 'status' => 500 )
+        );
+    }
+
+    /**
+     * Vérifie qu'un tableau décodé a la structure attendue : { widgets: [ { id, content }, ... ] }
+     *
+     * @param mixed $decoded  Données décodées depuis JSON.
+     * @return bool
+     */
+    private function is_valid_widget_response( $decoded ) {
+        if ( ! is_array( $decoded ) || ! isset( $decoded['widgets'] ) || ! is_array( $decoded['widgets'] ) ) {
+            return false;
+        }
+
+        if ( empty( $decoded['widgets'] ) ) {
+            return false;
+        }
+
+        // Vérifier qu'au moins le premier widget a un id et un content
+        $first = $decoded['widgets'][0];
+        return isset( $first['id'] ) && isset( $first['content'] );
     }
 }
