@@ -121,7 +121,7 @@ class AICF_Settings {
         register_setting( self::OPTION_GROUP, self::OPTION_PREFIX . 'max_tokens', array(
             'type'              => 'integer',
             'sanitize_callback' => 'absint',
-            'default'           => 1000,
+            'default'           => 2000,
         ) );
         add_settings_field(
             self::OPTION_PREFIX . 'max_tokens',
@@ -189,13 +189,13 @@ class AICF_Settings {
     }
 
     public function render_max_tokens_field() {
-        $value = get_option( self::OPTION_PREFIX . 'max_tokens', 1000 );
+        $value = get_option( self::OPTION_PREFIX . 'max_tokens', 2000 );
         printf(
             '<input type="number" id="%1$s" name="%1$s" value="%2$s" min="100" max="4096" step="100" class="small-text" />
              <p class="description">%3$s</p>',
             esc_attr( self::OPTION_PREFIX . 'max_tokens' ),
             esc_attr( $value ),
-            esc_html__( 'Nombre maximum de tokens dans la réponse de Claude. 1000 ≈ ~750 mots.', 'ai-content-filler' )
+            esc_html__( 'Nombre minimum de tokens. Le plugin ajuste automatiquement selon le nombre de widgets (300 tokens/widget). 2000 ≈ ~1500 mots.', 'ai-content-filler' )
         );
     }
 
@@ -254,6 +254,6 @@ class AICF_Settings {
     }
 
     public static function get_max_tokens() {
-        return absint( get_option( self::OPTION_PREFIX . 'max_tokens', 1000 ) );
+        return absint( get_option( self::OPTION_PREFIX . 'max_tokens', 2000 ) );
     }
 }
