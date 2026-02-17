@@ -10,16 +10,25 @@
 
     // Vérification que la config est disponible (injectée via wp_localize_script)
     if (typeof aicfConfig === 'undefined') {
+        console.error('[AI Content Filler] aicfConfig non trouvé. Le script ne peut pas démarrer.');
         return;
     }
 
     var config = aicfConfig;
     var isGenerating = false;
+    var panelCreated = false; // Garde contre la double création
 
     /**
      * Crée et injecte le panneau HTML dans l'éditeur.
+     * Protégé contre les appels multiples.
      */
     function createPanel() {
+        // Empêcher la création en double
+        if (panelCreated || document.getElementById('aicf-panel')) {
+            return;
+        }
+        panelCreated = true;
+
         var panelHTML =
             '<div id="aicf-panel">' +
                 '<div id="aicf-panel-header">' +
@@ -33,12 +42,11 @@
                 '</div>' +
             '</div>';
 
-        // Injection dans le body de l'éditeur Elementor (window parent si iframe)
         $('body').append(panelHTML);
 
-        // Événements
-        $('#aicf-generate-btn').on('click', onGenerateClick);
-        $('#aicf-panel-toggle').on('click', onTogglePanel);
+        // Binding des événements via délégation pour éviter tout problème de timing
+        $(document).on('click', '#aicf-generate-btn', onGenerateClick);
+        $(document).on('click', '#aicf-panel-toggle', onTogglePanel);
     }
 
     /**
@@ -68,6 +76,7 @@
     /**
      * Parcourt récursivement les containers Elementor pour trouver
      * les widgets heading et text-editor.
+     * Compatible avec les différentes versions d'Elementor (Container API + ancien layout).
      *
      * @param {Object} container  Container Elementor (section, colonne, widget…).
      * @returns {Array}           Liste de { id, type, current_text }.
@@ -75,207 +84,130 @@
     function scanWidgets(container) {
         var widgets = [];
 
-        if (!container || !container.children) {
+        if (!container) {
             return widgets;
         }
 
-        container.children.forEach(function (child) {
-            var elType = child.model.get('elType');
-            var widgetType = child.model.get('widgetType');
+        // Récupérer les enfants — structure variable selon la version d'Elementor
+        var children = null;
 
-            if (elType === 'widget') {
-                if (widgetType === 'heading') {
-                    widgets.push({
-                        id: child.model.get('id'),
-                        type: 'heading',
-                        current_text: child.model.getSetting('title') || ''
-                    });
-                } else if (widgetType === 'text-editor') {
-                    widgets.push({
-                        id: child.model.get('id'),
-                        type: 'text-editor',
-                        current_text: child.model.getSetting('editor') || ''
-                    });
+        if (container.children && container.children.length > 0) {
+            // Container API (Elementor 3.x+) — children est un tableau de Containers
+            children = container.children;
+        } else if (container.model && container.model.get && container.model.get('elements')) {
+            // Ancien format : les éléments enfants sont dans le modèle
+            var elements = container.model.get('elements');
+            if (elements && elements.models) {
+                // C'est une collection Backbone, on itère sur les modèles
+                // et on essaie de retrouver leurs containers
+                children = [];
+                elements.models.forEach(function (childModel) {
+                    if (childModel.container) {
+                        children.push(childModel.container);
+                    } else {
+                        // Créer un pseudo-container pour parcourir récursivement
+                        children.push({ model: childModel, children: getChildrenFromModel(childModel) });
+                    }
+                });
+            }
+        }
+
+        if (!children || children.length === 0) {
+            return widgets;
+        }
+
+        for (var i = 0; i < children.length; i++) {
+            var child = children[i];
+
+            if (!child || !child.model) {
+                continue;
+            }
+
+            try {
+                var elType = child.model.get('elType');
+                var widgetType = child.model.get('widgetType');
+
+                if (elType === 'widget') {
+                    var widgetId = child.model.get('id');
+                    var currentText = '';
+
+                    if (widgetType === 'heading') {
+                        // Récupérer le titre — tester les deux méthodes possibles
+                        currentText = getSettingValue(child.model, 'title');
+                        widgets.push({
+                            id: widgetId,
+                            type: 'heading',
+                            current_text: currentText || ''
+                        });
+                    } else if (widgetType === 'text-editor') {
+                        currentText = getSettingValue(child.model, 'editor');
+                        widgets.push({
+                            id: widgetId,
+                            type: 'text-editor',
+                            current_text: currentText || ''
+                        });
+                    }
                 }
+            } catch (e) {
+                console.warn('[AI Content Filler] Erreur lors du scan d\'un widget:', e);
             }
 
             // Descente récursive dans les sections, colonnes, containers internes
-            if (child.children && child.children.length) {
-                widgets = widgets.concat(scanWidgets(child));
+            var childWidgets = scanWidgets(child);
+            if (childWidgets.length > 0) {
+                widgets = widgets.concat(childWidgets);
             }
-        });
+        }
 
         return widgets;
     }
 
     /**
-     * Retrouve un container widget par son ID de modèle, récursivement.
+     * Récupère la valeur d'un setting d'un modèle Elementor.
+     * Tente plusieurs méthodes selon la version d'Elementor.
      *
-     * @param {Object} container  Container racine.
-     * @param {string} widgetId   ID du widget recherché.
-     * @returns {Object|null}     Le container du widget trouvé, ou null.
+     * @param {Object} model      Modèle Backbone du widget.
+     * @param {string} settingKey Clé du setting ('title', 'editor').
+     * @returns {string}
      */
-    function findWidgetById(container, widgetId) {
-        if (!container || !container.children) {
-            return null;
+    function getSettingValue(model, settingKey) {
+        // Méthode 1 : getSetting() (disponible sur la plupart des versions)
+        if (typeof model.getSetting === 'function') {
+            try {
+                var val = model.getSetting(settingKey);
+                if (val) return val;
+            } catch (e) {}
         }
 
-        for (var i = 0; i < container.children.length; i++) {
-            var child = container.children.models ? container.children.models[i] : container.children[i];
-
-            // Normaliser l'accès : parfois c'est une collection Backbone
-            var actualChild = child;
-            if (container.children.models) {
-                // C'est une collection Backbone, récupérer le container view
-                actualChild = container.children._views
-                    ? container.children._views[child.cid]
-                    : null;
+        // Méthode 2 : accès via l'objet settings du modèle
+        try {
+            var settings = model.get('settings');
+            if (settings && typeof settings.get === 'function') {
+                var val2 = settings.get(settingKey);
+                if (val2) return val2;
             }
+        } catch (e) {}
 
-            if (!actualChild) continue;
-
-            if (actualChild.model && actualChild.model.get('id') === widgetId) {
-                return actualChild;
-            }
-
-            var found = findWidgetById(actualChild, widgetId);
-            if (found) return found;
-        }
-
-        return null;
+        return '';
     }
 
     /**
-     * Handler du clic sur le bouton "Générer le contenu".
+     * Tente de récupérer les enfants depuis un modèle Backbone (fallback).
      */
-    function onGenerateClick() {
-        if (isGenerating) {
-            return;
-        }
-
-        var prompt = $.trim($('#aicf-prompt').val());
-
-        if (!prompt) {
-            setStatus(config.i18n.empty_prompt, 'error');
-            return;
-        }
-
-        // Récupérer l'ID de la page courante dans Elementor
-        var pageId = 0;
-        if (typeof elementor !== 'undefined' && elementor.config && elementor.config.document) {
-            pageId = elementor.config.document.id;
-        }
-
-        if (!pageId) {
-            setStatus('Impossible de déterminer l\'ID de la page.', 'error');
-            return;
-        }
-
-        // Scanner les widgets de la page
-        var currentDocument = elementor.documents.getCurrent();
-        if (!currentDocument || !currentDocument.container) {
-            setStatus('Document Elementor non accessible.', 'error');
-            return;
-        }
-
-        var widgets = scanWidgets(currentDocument.container);
-
-        if (!widgets.length) {
-            setStatus(config.i18n.no_widgets, 'error');
-            return;
-        }
-
-        // Lancer la génération
-        isGenerating = true;
-        setStatus(config.i18n.loading, 'loading');
-        $('#aicf-generate-btn').prop('disabled', true);
-
-        var payload = {
-            page_id: pageId,
-            user_prompt: prompt,
-            widgets: widgets
-        };
-
-        fetch(config.restUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-WP-Nonce': config.nonce
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(function (response) {
-            return response.json().then(function (data) {
-                return { status: response.status, data: data };
-            });
-        })
-        .then(function (result) {
-            if (result.status !== 200 || !result.data.success) {
-                var errorMsg = result.data.message || result.data.data?.message || config.i18n.error;
-                throw new Error(errorMsg);
-            }
-
-            // Appliquer le contenu généré à chaque widget
-            applyGeneratedContent(result.data.widgets, currentDocument.container);
-
-            setStatus(config.i18n.success + ' ' + config.i18n.save_reminder, 'success');
-        })
-        .catch(function (err) {
-            setStatus(config.i18n.error + ' : ' + err.message, 'error');
-        })
-        .finally(function () {
-            isGenerating = false;
-            $('#aicf-generate-btn').prop('disabled', false);
-        });
-    }
-
-    /**
-     * Applique le contenu généré par Claude aux widgets Elementor.
-     *
-     * Utilise $e.run('document/elements/settings') pour modifier les settings
-     * de façon compatible avec l'historique d'undo d'Elementor.
-     *
-     * @param {Array}  generatedWidgets  [ { id, content }, ... ]
-     * @param {Object} rootContainer     Container racine du document Elementor.
-     */
-    function applyGeneratedContent(generatedWidgets, rootContainer) {
-        if (!generatedWidgets || !generatedWidgets.length) {
-            return;
-        }
-
-        generatedWidgets.forEach(function (gw) {
-            // Retrouver le container du widget dans l'arbre Elementor
-            var widgetContainer = findContainerById(rootContainer, gw.id);
-
-            if (!widgetContainer) {
-                // Widget non trouvé, on l'ignore sans écraser de contenu
-                return;
-            }
-
-            var widgetType = widgetContainer.model.get('widgetType');
-            var settingKey = (widgetType === 'heading') ? 'title' : 'editor';
-
-            // Utilisation de la commande Elementor pour modifier le setting
-            // Cela s'intègre avec le système d'undo/redo natif
-            if (typeof $e !== 'undefined' && $e.run) {
-                $e.run('document/elements/settings', {
-                    container: widgetContainer,
-                    settings: createSettingsObject(settingKey, gw.content)
+    function getChildrenFromModel(model) {
+        var result = [];
+        try {
+            var elements = model.get('elements');
+            if (elements && elements.models) {
+                elements.models.forEach(function (childModel) {
+                    result.push({
+                        model: childModel,
+                        children: getChildrenFromModel(childModel)
+                    });
                 });
-            } else {
-                // Fallback : modification directe du modèle
-                widgetContainer.model.setSetting(settingKey, gw.content);
             }
-        });
-    }
-
-    /**
-     * Crée un objet settings dynamique pour la commande Elementor.
-     */
-    function createSettingsObject(key, value) {
-        var obj = {};
-        obj[key] = value;
-        return obj;
+        } catch (e) {}
+        return result;
     }
 
     /**
@@ -298,23 +230,12 @@
 
         // Parcourir les enfants
         var children = container.children;
-        if (!children) {
+        if (!children || !children.length) {
             return null;
         }
 
-        // Gérer les différents formats de children (array, collection Backbone)
-        var childList = children.models || children;
-        if (typeof childList.forEach !== 'function') {
-            return null;
-        }
-
-        for (var i = 0; i < childList.length; i++) {
-            var child = childList[i];
-
-            // Si c'est un modèle Backbone, chercher la vue/container correspondante
-            var childContainer = child.container || child;
-
-            var found = findContainerById(childContainer, targetId);
+        for (var i = 0; i < children.length; i++) {
+            var found = findContainerById(children[i], targetId);
             if (found) {
                 return found;
             }
@@ -323,17 +244,246 @@
         return null;
     }
 
-    // Initialisation : attendre que l'éditeur Elementor soit prêt
-    $(window).on('elementor:init', function () {
-        // Petit délai pour s'assurer que l'UI Elementor est complètement chargée
-        setTimeout(createPanel, 1000);
-    });
+    /**
+     * Handler du clic sur le bouton "Générer le contenu".
+     */
+    function onGenerateClick() {
+        if (isGenerating) {
+            return;
+        }
 
-    // Fallback si l'événement elementor:init est déjà passé
-    if (typeof elementor !== 'undefined') {
-        $(document).ready(function () {
-            setTimeout(createPanel, 1500);
+        try {
+            var prompt = $.trim($('#aicf-prompt').val());
+
+            if (!prompt) {
+                setStatus(config.i18n.empty_prompt, 'error');
+                return;
+            }
+
+            // Vérifier que l'objet Elementor est disponible
+            if (typeof elementor === 'undefined') {
+                setStatus('Elementor n\'est pas chargé.', 'error');
+                return;
+            }
+
+            // Récupérer l'ID de la page courante dans Elementor
+            var pageId = 0;
+            try {
+                pageId = elementor.config.document.id ||
+                         elementor.config.initial_document.id ||
+                         0;
+            } catch (e) {
+                // Fallback : tenter de le lire depuis l'URL
+                var match = window.location.search.match(/post=(\d+)/);
+                if (match) {
+                    pageId = parseInt(match[1], 10);
+                }
+            }
+
+            if (!pageId) {
+                setStatus('Impossible de déterminer l\'ID de la page.', 'error');
+                return;
+            }
+
+            // Scanner les widgets de la page
+            var rootContainer = null;
+            try {
+                var currentDocument = elementor.documents.getCurrent();
+                if (currentDocument && currentDocument.container) {
+                    rootContainer = currentDocument.container;
+                }
+            } catch (e) {
+                console.warn('[AI Content Filler] Impossible d\'accéder au document courant:', e);
+            }
+
+            // Fallback : essayer via elementor.elements (ancienne API)
+            if (!rootContainer) {
+                try {
+                    if (elementor.elements && elementor.elements.models) {
+                        rootContainer = {
+                            model: null,
+                            children: elementor.elements.models.map(function (m) {
+                                return m.container || { model: m, children: getChildrenFromModel(m) };
+                            })
+                        };
+                    }
+                } catch (e) {
+                    console.warn('[AI Content Filler] Fallback elementor.elements échoué:', e);
+                }
+            }
+
+            if (!rootContainer) {
+                setStatus('Document Elementor non accessible. Essayez de recharger l\'éditeur.', 'error');
+                return;
+            }
+
+            var widgets = scanWidgets(rootContainer);
+
+            if (!widgets.length) {
+                setStatus(config.i18n.no_widgets, 'error');
+                return;
+            }
+
+            // Lancer la génération
+            isGenerating = true;
+            setStatus(config.i18n.loading + ' (' + widgets.length + ' widgets détectés)', 'loading');
+            $('#aicf-generate-btn').prop('disabled', true);
+
+            var payload = {
+                page_id: pageId,
+                user_prompt: prompt,
+                widgets: widgets
+            };
+
+            fetch(config.restUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce': config.nonce
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify(payload)
+            })
+            .then(function (response) {
+                return response.json().then(function (data) {
+                    return { status: response.status, data: data };
+                });
+            })
+            .then(function (result) {
+                if (result.status !== 200 || !result.data.success) {
+                    // Extraire le message d'erreur depuis les différents formats WP REST
+                    var errorMsg = '';
+                    if (result.data && result.data.message) {
+                        errorMsg = result.data.message;
+                    } else if (result.data && result.data.data && result.data.data.message) {
+                        errorMsg = result.data.data.message;
+                    } else if (result.data && result.data.code) {
+                        errorMsg = result.data.code;
+                    } else {
+                        errorMsg = 'HTTP ' + result.status;
+                    }
+                    throw new Error(errorMsg);
+                }
+
+                // Appliquer le contenu généré à chaque widget
+                var applied = applyGeneratedContent(result.data.widgets, rootContainer);
+
+                setStatus(config.i18n.success + ' (' + applied + ' widgets mis à jour) — ' + config.i18n.save_reminder, 'success');
+            })
+            .catch(function (err) {
+                console.error('[AI Content Filler] Erreur:', err);
+                setStatus(config.i18n.error + ' : ' + err.message, 'error');
+            })
+            .finally(function () {
+                isGenerating = false;
+                $('#aicf-generate-btn').prop('disabled', false);
+            });
+
+        } catch (err) {
+            console.error('[AI Content Filler] Erreur inattendue:', err);
+            setStatus(config.i18n.error + ' : ' + err.message, 'error');
+            isGenerating = false;
+            $('#aicf-generate-btn').prop('disabled', false);
+        }
+    }
+
+    /**
+     * Applique le contenu généré par Claude aux widgets Elementor.
+     *
+     * Utilise $e.run('document/elements/settings') pour modifier les settings
+     * de façon compatible avec l'historique d'undo d'Elementor.
+     *
+     * @param {Array}  generatedWidgets  [ { id, content }, ... ]
+     * @param {Object} rootContainer     Container racine du document Elementor.
+     * @returns {number}                 Nombre de widgets mis à jour.
+     */
+    function applyGeneratedContent(generatedWidgets, rootContainer) {
+        if (!generatedWidgets || !generatedWidgets.length) {
+            return 0;
+        }
+
+        var appliedCount = 0;
+
+        generatedWidgets.forEach(function (gw) {
+            try {
+                // Retrouver le container du widget dans l'arbre Elementor
+                var widgetContainer = findContainerById(rootContainer, gw.id);
+
+                if (!widgetContainer) {
+                    console.warn('[AI Content Filler] Widget non trouvé dans l\'arbre:', gw.id);
+                    return;
+                }
+
+                var widgetType = widgetContainer.model.get('widgetType');
+                var settingKey = (widgetType === 'heading') ? 'title' : 'editor';
+
+                // Méthode 1 : commande $e.run (compatible undo/redo, Elementor 3+)
+                if (typeof $e !== 'undefined' && $e.run) {
+                    var settings = {};
+                    settings[settingKey] = gw.content;
+                    $e.run('document/elements/settings', {
+                        container: widgetContainer,
+                        settings: settings
+                    });
+                    appliedCount++;
+                }
+                // Méthode 2 : modification directe du modèle settings
+                else if (typeof widgetContainer.model.setSetting === 'function') {
+                    widgetContainer.model.setSetting(settingKey, gw.content);
+                    appliedCount++;
+                }
+                // Méthode 3 : accès bas niveau via l'objet settings
+                else {
+                    var settingsObj = widgetContainer.model.get('settings');
+                    if (settingsObj && typeof settingsObj.set === 'function') {
+                        settingsObj.set(settingKey, gw.content);
+                        appliedCount++;
+                    }
+                }
+            } catch (e) {
+                console.error('[AI Content Filler] Erreur lors de l\'application au widget ' + gw.id + ':', e);
+            }
         });
+
+        // Forcer le rafraîchissement de la prévisualisation
+        try {
+            if (typeof elementor !== 'undefined' && elementor.channels) {
+                elementor.channels.editor.trigger('change');
+            }
+        } catch (e) {}
+
+        return appliedCount;
+    }
+
+    // ---------------------------------------------------------------
+    // Initialisation — un seul chemin d'entrée, avec attente d'Elementor
+    // ---------------------------------------------------------------
+
+    function waitForElementorAndInit() {
+        // Si Elementor est déjà prêt
+        if (typeof elementor !== 'undefined' && elementor.documents) {
+            createPanel();
+            return;
+        }
+
+        // Sinon, écouter l'événement d'initialisation
+        $(window).on('elementor:init', function () {
+            setTimeout(createPanel, 500);
+        });
+
+        // Sécurité : si rien ne s'est passé après 5 secondes, forcer la création
+        setTimeout(function () {
+            if (!panelCreated) {
+                createPanel();
+            }
+        }, 5000);
+    }
+
+    // Lancement
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        waitForElementorAndInit();
+    } else {
+        $(document).ready(waitForElementorAndInit);
     }
 
 })(jQuery);
