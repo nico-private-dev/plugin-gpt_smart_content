@@ -332,9 +332,56 @@
     color: #92400e;
 }
 
-.aicf-wl-type-text-editor {
+.aicf-wl-type-text {
     background: #dbeafe;
     color: #1e40af;
+}
+
+.aicf-wl-type-button {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.aicf-wl-type-box {
+    background: #ede9fe;
+    color: #5b21b6;
+}
+
+.aicf-wl-type-testimonial {
+    background: #fce7f3;
+    color: #9d174d;
+}
+
+.aicf-wl-type-data {
+    background: #ffedd5;
+    color: #9a3412;
+}
+
+.aicf-wl-type-cta {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+.aicf-wl-type-alert {
+    background: #fef2f2;
+    color: #991b1b;
+}
+
+.aicf-wl-type-default {
+    background: #f3f4f6;
+    color: #374151;
+}
+
+/* Badge nombre de champs */
+.aicf-wl-field-count {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 0 4px;
+    font-size: 9px;
+    font-weight: 600;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.1);
+    vertical-align: middle;
 }
 
 /* Aperçu du texte */

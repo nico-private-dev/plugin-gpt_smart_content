@@ -111,11 +111,27 @@ class AICF_Elementor_Bridge {
             if ( empty( $w['id'] ) || empty( $w['type'] ) ) {
                 continue;
             }
-            $widgets[] = array(
-                'id'           => sanitize_text_field( $w['id'] ),
-                'type'         => sanitize_text_field( $w['type'] ),
-                'current_text' => isset( $w['current_text'] ) ? sanitize_textarea_field( $w['current_text'] ) : '',
+
+            $widget_data = array(
+                'id'   => sanitize_text_field( $w['id'] ),
+                'type' => sanitize_text_field( $w['type'] ),
             );
+
+            // Nouveau format multi-champs
+            if ( isset( $w['fields'] ) && is_array( $w['fields'] ) ) {
+                $fields = array();
+                foreach ( $w['fields'] as $key => $value ) {
+                    $safe_key           = sanitize_text_field( $key );
+                    $fields[ $safe_key ] = sanitize_textarea_field( $value );
+                }
+                $widget_data['fields'] = $fields;
+            }
+            // Rétrocompatibilité ancien format
+            elseif ( isset( $w['current_text'] ) ) {
+                $widget_data['current_text'] = sanitize_textarea_field( $w['current_text'] );
+            }
+
+            $widgets[] = $widget_data;
         }
 
         if ( empty( $widgets ) ) {
@@ -172,7 +188,7 @@ class AICF_Elementor_Bridge {
                 'loading'       => __( 'Génération en cours...', 'ai-content-filler' ),
                 'success'       => __( 'Contenu généré avec succès !', 'ai-content-filler' ),
                 'error'         => __( 'Erreur', 'ai-content-filler' ),
-                'no_widgets'    => __( 'Aucun widget Heading ou Text Editor trouvé sur cette page.', 'ai-content-filler' ),
+                'no_widgets'    => __( 'Aucun widget avec du contenu texte trouvé sur cette page.', 'ai-content-filler' ),
                 'empty_prompt'  => __( 'Veuillez saisir un prompt.', 'ai-content-filler' ),
                 'no_api_key'    => __( 'Configurez votre clé API dans Réglages > AI Content Filler.', 'ai-content-filler' ),
                 'rate_limited'  => __( 'Veuillez patienter quelques secondes avant de relancer.', 'ai-content-filler' ),
