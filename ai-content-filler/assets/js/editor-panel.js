@@ -2,14 +2,13 @@
  * AI Content Filler — Panneau injecté dans l'éditeur Elementor.
  *
  * Ce script crée un panneau flottant en bas à gauche de l'éditeur,
- * scanne les widgets Heading et Text Editor de la page,
+ * scanne les widgets de la page (heading, text-editor, button, icon-box, etc.),
  * permet à l'utilisateur de sélectionner/désélectionner les widgets,
  * et envoie le tout à l'API REST du plugin pour génération via Claude.
  */
 (function ($) {
     'use strict';
 
-    // Vérification que la config est disponible (injectée via wp_localize_script)
     if (typeof aicfConfig === 'undefined') {
         console.error('[AI Content Filler] aicfConfig non trouvé. Le script ne peut pas démarrer.');
         return;
@@ -21,9 +20,93 @@
 
     // État du flux en 2 étapes
     var currentStep = 'prompt';  // 'prompt' | 'select' | 'generating'
-    var scannedWidgets = [];     // Résultat du dernier scan
+    var scannedWidgets = [];
     var cachedRootContainer = null;
     var cachedPageId = 0;
+
+    // ---------------------------------------------------------------
+    // Registre des types de widgets supportés
+    // Chaque entrée définit les champs texte à extraire et le label UI.
+    // ---------------------------------------------------------------
+    var WIDGET_REGISTRY = {
+        // --- Elementor Free ---
+        'heading': {
+            label: 'Titre',
+            cssClass: 'heading',
+            fields: { 'title': 'Titre' }
+        },
+        'text-editor': {
+            label: 'Texte',
+            cssClass: 'text',
+            fields: { 'editor': 'Contenu HTML' }
+        },
+        'button': {
+            label: 'Bouton',
+            cssClass: 'button',
+            fields: { 'text': 'Texte du bouton' }
+        },
+        'icon-box': {
+            label: 'Boîte icône',
+            cssClass: 'box',
+            fields: { 'title_text': 'Titre', 'description_text': 'Description' }
+        },
+        'image-box': {
+            label: 'Boîte image',
+            cssClass: 'box',
+            fields: { 'title_text': 'Titre', 'description_text': 'Description' }
+        },
+        'testimonial': {
+            label: 'Témoignage',
+            cssClass: 'testimonial',
+            fields: { 'testimonial_content': 'Témoignage', 'testimonial_name': 'Nom', 'testimonial_job': 'Poste' }
+        },
+        'counter': {
+            label: 'Compteur',
+            cssClass: 'data',
+            fields: { 'title': 'Titre' }
+        },
+        'progress': {
+            label: 'Progression',
+            cssClass: 'data',
+            fields: { 'title': 'Titre' }
+        },
+        'alert': {
+            label: 'Alerte',
+            cssClass: 'alert',
+            fields: { 'alert_title': 'Titre', 'alert_description': 'Description' }
+        },
+        'star-rating': {
+            label: 'Étoiles',
+            cssClass: 'data',
+            fields: { 'title': 'Titre' }
+        },
+        // --- Elementor Pro ---
+        'call-to-action': {
+            label: 'CTA',
+            cssClass: 'cta',
+            fields: { 'title': 'Titre', 'description': 'Description', 'button_text': 'Bouton' }
+        },
+        'animated-headline': {
+            label: 'Titre animé',
+            cssClass: 'heading',
+            fields: { 'before_text': 'Texte avant', 'highlighted_text': 'Texte surligné' }
+        },
+        'flip-box': {
+            label: 'Flip Box',
+            cssClass: 'box',
+            fields: { 'title_text_a': 'Titre avant', 'description_text_a': 'Desc. avant', 'title_text_b': 'Titre arrière', 'description_text_b': 'Desc. arrière' }
+        },
+        'price-table': {
+            label: 'Table de prix',
+            cssClass: 'data',
+            fields: { 'heading': 'Titre', 'sub_heading': 'Sous-titre', 'period': 'Période', 'footer_additional_info': 'Info complémentaire', 'button_text': 'Bouton' }
+        },
+        'blockquote': {
+            label: 'Citation',
+            cssClass: 'testimonial',
+            fields: { 'blockquote_content': 'Citation' }
+        }
+    };
 
     /**
      * Crée et injecte le panneau HTML dans l'éditeur.
@@ -51,7 +134,6 @@
 
         $('body').append(panelHTML);
 
-        // Binding des événements
         $(document).on('click', '#aicf-scan-btn', onScanClick);
         $(document).on('click', '#aicf-generate-btn', onGenerateClick);
         $(document).on('click', '#aicf-panel-toggle', onTogglePanel);
@@ -61,9 +143,6 @@
         $(document).on('click', '#aicf-back-to-prompt', onBackToPrompt);
     }
 
-    /**
-     * Bascule la visibilité du corps du panneau.
-     */
     function onTogglePanel() {
         var $body = $('#aicf-panel-body');
         var $btn = $('#aicf-panel-toggle');
@@ -71,9 +150,6 @@
         $btn.html($body.hasClass('aicf-collapsed') ? '&#9650;' : '&#9660;');
     }
 
-    /**
-     * Met à jour la zone de statut du panneau.
-     */
     function setStatus(message, type) {
         var $status = $('#aicf-status');
         $status
@@ -88,7 +164,7 @@
 
     /**
      * Parcourt récursivement les containers Elementor pour trouver
-     * les widgets heading et text-editor.
+     * tous les widgets supportés et extraire leurs champs texte.
      */
     function scanWidgets(container) {
         var widgets = [];
@@ -130,25 +206,22 @@
                 var elType = child.model.get('elType');
                 var widgetType = child.model.get('widgetType');
 
-                if (elType === 'widget') {
+                if (elType === 'widget' && widgetType && WIDGET_REGISTRY[widgetType]) {
+                    var reg = WIDGET_REGISTRY[widgetType];
                     var widgetId = child.model.get('id');
-                    var currentText = '';
+                    var fields = {};
 
-                    if (widgetType === 'heading') {
-                        currentText = getSettingValue(child.model, 'title');
-                        widgets.push({
-                            id: widgetId,
-                            type: 'heading',
-                            current_text: currentText || ''
-                        });
-                    } else if (widgetType === 'text-editor') {
-                        currentText = getSettingValue(child.model, 'editor');
-                        widgets.push({
-                            id: widgetId,
-                            type: 'text-editor',
-                            current_text: currentText || ''
-                        });
+                    for (var key in reg.fields) {
+                        if (reg.fields.hasOwnProperty(key)) {
+                            fields[key] = getSettingValue(child.model, key) || '';
+                        }
                     }
+
+                    widgets.push({
+                        id: widgetId,
+                        type: widgetType,
+                        fields: fields
+                    });
                 }
             } catch (e) {
                 console.warn('[AI Content Filler] Erreur lors du scan d\'un widget:', e);
@@ -163,9 +236,6 @@
         return widgets;
     }
 
-    /**
-     * Récupère la valeur d'un setting d'un modèle Elementor.
-     */
     function getSettingValue(model, settingKey) {
         if (typeof model.getSetting === 'function') {
             try {
@@ -185,9 +255,6 @@
         return '';
     }
 
-    /**
-     * Tente de récupérer les enfants depuis un modèle Backbone (fallback).
-     */
     function getChildrenFromModel(model) {
         var result = [];
         try {
@@ -204,9 +271,6 @@
         return result;
     }
 
-    /**
-     * Recherche récursive d'un container par l'ID de son modèle.
-     */
     function findContainerById(container, targetId) {
         if (!container) {
             return null;
@@ -236,17 +300,26 @@
     // ---------------------------------------------------------------
 
     /**
-     * Extrait un aperçu texte court depuis du HTML ou du texte brut.
+     * Extrait un aperçu texte depuis les champs d'un widget.
+     * Concatène les valeurs non vides avec " | ".
      */
-    function getTextPreview(text, maxLen) {
-        if (!text) return '(vide)';
-        // Retirer les balises HTML
-        var plain = text.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
-        if (!plain) return '(vide)';
-        if (plain.length > maxLen) {
-            return plain.substring(0, maxLen) + '...';
+    function getFieldsPreview(fields, maxLen) {
+        var parts = [];
+        for (var key in fields) {
+            if (fields.hasOwnProperty(key)) {
+                var val = fields[key];
+                if (val) {
+                    var plain = val.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+                    if (plain) parts.push(plain);
+                }
+            }
         }
-        return plain;
+        if (!parts.length) return '(vide)';
+        var combined = parts.join(' | ');
+        if (combined.length > maxLen) {
+            return combined.substring(0, maxLen) + '...';
+        }
+        return combined;
     }
 
     /**
@@ -272,8 +345,12 @@
         html += '<div class="aicf-wl-items">';
         for (var i = 0; i < widgets.length; i++) {
             var w = widgets[i];
-            var typeLabel = w.type === 'heading' ? 'Titre' : 'Texte';
-            var preview = getTextPreview(w.current_text, 40);
+            var reg = WIDGET_REGISTRY[w.type];
+            var typeLabel = reg ? reg.label : w.type;
+            var cssClass = reg ? reg.cssClass : 'default';
+            var preview = getFieldsPreview(w.fields, 40);
+            var fieldCount = reg ? Object.keys(reg.fields).length : 0;
+            var fieldBadge = fieldCount > 1 ? ' <span class="aicf-wl-field-count">' + fieldCount + ' champs</span>' : '';
 
             html += '<div class="aicf-wl-item" data-widget-id="' + w.id + '">';
             html += '<label class="aicf-wl-checkbox-label">';
@@ -281,7 +358,7 @@
             html += '<span class="aicf-wl-checkmark"></span>';
             html += '</label>';
             html += '<div class="aicf-wl-info">';
-            html += '<span class="aicf-wl-type aicf-wl-type-' + w.type + '">' + typeLabel + '</span>';
+            html += '<span class="aicf-wl-type aicf-wl-type-' + cssClass + '">' + typeLabel + fieldBadge + '</span>';
             html += '<span class="aicf-wl-preview">' + $('<span>').text(preview).html() + '</span>';
             html += '</div>';
             html += '<button type="button" class="aicf-widget-remove" data-widget-id="' + w.id + '" title="Exclure ce widget">&times;</button>';
@@ -293,16 +370,10 @@
         $container.html(html);
     }
 
-    /**
-     * Retourne le nombre de widgets actuellement cochés dans la liste.
-     */
     function getSelectedCount() {
         return $('.aicf-widget-checkbox:checked').length;
     }
 
-    /**
-     * Met à jour le texte du bouton Générer avec le compte de widgets sélectionnés.
-     */
     function updateGenerateButtonLabel() {
         var count = getSelectedCount();
         var $btn = $('#aicf-generate-btn');
@@ -332,7 +403,6 @@
                 return;
             }
 
-            // Récupérer l'ID de la page
             cachedPageId = 0;
             try {
                 cachedPageId = elementor.config.document.id ||
@@ -350,7 +420,6 @@
                 return;
             }
 
-            // Récupérer le root container
             cachedRootContainer = null;
             try {
                 var currentDocument = elementor.documents.getCurrent();
@@ -381,7 +450,6 @@
                 return;
             }
 
-            // Scanner les widgets
             scannedWidgets = scanWidgets(cachedRootContainer);
 
             if (!scannedWidgets.length) {
@@ -389,11 +457,9 @@
                 return;
             }
 
-            // Passer à l'étape de sélection
             currentStep = 'select';
             renderWidgetList(scannedWidgets);
 
-            // Cacher le bouton scan, afficher le bouton generate + retour
             $('#aicf-scan-btn').hide();
             $('#aicf-generate-btn').show();
             updateGenerateButtonLabel();
@@ -410,62 +476,45 @@
     // Interactions avec la liste de widgets
     // ---------------------------------------------------------------
 
-    /**
-     * Retrait d'un widget de la liste (bouton ×).
-     */
     function onWidgetRemove(e) {
         e.preventDefault();
         var widgetId = $(this).data('widget-id');
 
-        // Retirer du DOM
         $('.aicf-wl-item[data-widget-id="' + widgetId + '"]').slideUp(200, function () {
             $(this).remove();
             updateWidgetCount();
             updateGenerateButtonLabel();
 
-            // Si plus aucun widget, revenir à l'étape prompt
             if ($('.aicf-wl-item').length === 0) {
                 onBackToPrompt();
                 setStatus(config.i18n.no_widgets, 'error');
             }
         });
 
-        // Retirer du tableau interne
         scannedWidgets = scannedWidgets.filter(function (w) {
             return w.id !== widgetId;
         });
     }
 
-    /**
-     * Met à jour le compteur de widgets dans le header de la liste.
-     */
     function updateWidgetCount() {
         var total = $('.aicf-wl-item').length;
         var selected = getSelectedCount();
         $('.aicf-wl-count').text(selected + '/' + total + ' widget' + (total > 1 ? 's' : '') + ' sélectionné' + (selected > 1 ? 's' : ''));
     }
 
-    /**
-     * Handler de changement de checkbox d'un widget.
-     */
     function onWidgetCheckboxChange() {
         updateWidgetCount();
         updateGenerateButtonLabel();
     }
 
-    /**
-     * Tout sélectionner / tout désélectionner.
-     */
     function onSelectAllToggle() {
         var $btn = $(this);
         var state = $btn.data('state');
 
         if (state === 'all') {
-            // Tout désélectionner
             $('.aicf-widget-checkbox').prop('checked', false);
             $btn.data('state', 'none').text('Tout sélect.');
         } else {
-            // Tout sélectionner
             $('.aicf-widget-checkbox').prop('checked', true);
             $btn.data('state', 'all').text('Tout désélect.');
         }
@@ -474,9 +523,6 @@
         updateGenerateButtonLabel();
     }
 
-    /**
-     * Retour à l'étape prompt (annuler le scan).
-     */
     function onBackToPrompt() {
         currentStep = 'prompt';
         scannedWidgets = [];
@@ -493,9 +539,6 @@
     // Étape 2 : Génération du contenu
     // ---------------------------------------------------------------
 
-    /**
-     * Handler du clic sur le bouton "Générer le contenu".
-     */
     function onGenerateClick() {
         if (isGenerating) return;
 
@@ -507,7 +550,6 @@
                 return;
             }
 
-            // Collecter uniquement les widgets cochés
             var selectedIds = [];
             $('.aicf-widget-checkbox:checked').each(function () {
                 selectedIds.push($(this).data('widget-id'));
@@ -518,7 +560,6 @@
                 return;
             }
 
-            // Filtrer les widgets scannés pour ne garder que les sélectionnés
             var selectedWidgets = scannedWidgets.filter(function (w) {
                 return selectedIds.indexOf(w.id) !== -1;
             });
@@ -528,14 +569,11 @@
                 return;
             }
 
-            // Lancer la génération
             isGenerating = true;
             currentStep = 'generating';
             setStatus(config.i18n.loading + ' (' + selectedWidgets.length + ' widget' + (selectedWidgets.length > 1 ? 's' : '') + ')', 'loading');
             $('#aicf-generate-btn').prop('disabled', true).html('&#10024; Génération...');
             $('#aicf-scan-btn').prop('disabled', true);
-
-            // Désactiver les checkboxes et boutons remove pendant la génération
             $('.aicf-widget-checkbox, .aicf-widget-remove, #aicf-select-all').prop('disabled', true);
 
             var payload = {
@@ -575,7 +613,6 @@
 
                 var applied = applyGeneratedContent(result.data.widgets, cachedRootContainer);
 
-                // Marquer les widgets appliqués visuellement
                 if (result.data.widgets) {
                     result.data.widgets.forEach(function (gw) {
                         $('.aicf-wl-item[data-widget-id="' + gw.id + '"]').addClass('aicf-wl-item-done');
@@ -611,6 +648,10 @@
 
     /**
      * Applique le contenu généré par Claude aux widgets Elementor.
+     *
+     * Supporte deux formats de réponse :
+     * - Nouveau : content = { field_key: value, ... } (multi-champs)
+     * - Ancien :  content = "string" (rétrocompatibilité, appliqué au 1er champ du registre)
      */
     function applyGeneratedContent(generatedWidgets, rootContainer) {
         if (!generatedWidgets || !generatedWidgets.length) {
@@ -629,25 +670,37 @@
                 }
 
                 var widgetType = widgetContainer.model.get('widgetType');
-                var settingKey = (widgetType === 'heading') ? 'title' : 'editor';
+                var settingsToApply = {};
 
-                if (typeof $e !== 'undefined' && $e.run) {
-                    var settings = {};
-                    settings[settingKey] = gw.content;
-                    $e.run('document/elements/settings', {
-                        container: widgetContainer,
-                        settings: settings
-                    });
-                    appliedCount++;
-                } else if (typeof widgetContainer.model.setSetting === 'function') {
-                    widgetContainer.model.setSetting(settingKey, gw.content);
-                    appliedCount++;
-                } else {
-                    var settingsObj = widgetContainer.model.get('settings');
-                    if (settingsObj && typeof settingsObj.set === 'function') {
-                        settingsObj.set(settingKey, gw.content);
-                        appliedCount++;
+                if (typeof gw.content === 'object' && gw.content !== null) {
+                    // Nouveau format multi-champs : { field_key: value }
+                    settingsToApply = gw.content;
+                } else if (typeof gw.content === 'string') {
+                    // Ancien format : string → appliqué au premier champ du registre
+                    var reg = WIDGET_REGISTRY[widgetType];
+                    if (reg) {
+                        var firstKey = Object.keys(reg.fields)[0];
+                        settingsToApply[firstKey] = gw.content;
+                    } else {
+                        // Fallback absolu pour les types inconnus
+                        var fallbackKey = (widgetType === 'heading') ? 'title' : 'editor';
+                        settingsToApply[fallbackKey] = gw.content;
                     }
+                }
+
+                // Appliquer chaque champ au widget Elementor
+                var widgetApplied = false;
+                for (var settingKey in settingsToApply) {
+                    if (!settingsToApply.hasOwnProperty(settingKey)) continue;
+
+                    var value = settingsToApply[settingKey];
+                    if (applySettingToWidget(widgetContainer, settingKey, value)) {
+                        widgetApplied = true;
+                    }
+                }
+
+                if (widgetApplied) {
+                    appliedCount++;
                 }
             } catch (e) {
                 console.error('[AI Content Filler] Erreur lors de l\'application au widget ' + gw.id + ':', e);
@@ -661,6 +714,36 @@
         } catch (e) {}
 
         return appliedCount;
+    }
+
+    /**
+     * Applique une valeur à un setting d'un widget Elementor.
+     * Utilise $e.run en priorité pour la compatibilité undo/redo.
+     */
+    function applySettingToWidget(widgetContainer, settingKey, value) {
+        try {
+            if (typeof $e !== 'undefined' && $e.run) {
+                var settings = {};
+                settings[settingKey] = value;
+                $e.run('document/elements/settings', {
+                    container: widgetContainer,
+                    settings: settings
+                });
+                return true;
+            } else if (typeof widgetContainer.model.setSetting === 'function') {
+                widgetContainer.model.setSetting(settingKey, value);
+                return true;
+            } else {
+                var settingsObj = widgetContainer.model.get('settings');
+                if (settingsObj && typeof settingsObj.set === 'function') {
+                    settingsObj.set(settingKey, value);
+                    return true;
+                }
+            }
+        } catch (e) {
+            console.error('[AI Content Filler] Erreur setSetting(' + settingKey + '):', e);
+        }
+        return false;
     }
 
     // ---------------------------------------------------------------

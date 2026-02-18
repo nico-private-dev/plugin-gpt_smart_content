@@ -17,16 +17,38 @@ class AICF_API_Handler {
     const API_VERSION = '2023-06-01';
 
     /** Timeout en secondes pour l'appel HTTP */
-    const TIMEOUT = 60;
+    const TIMEOUT = 90;
 
     /** Tokens minimum par widget pour éviter la troncature */
-    const TOKENS_PER_WIDGET = 300;
+    const TOKENS_PER_WIDGET = 400;
+
+    /**
+     * Registre des types de widgets supportés côté serveur.
+     * Chaque type est associé à une description concise pour le prompt.
+     */
+    private static $widget_types = array(
+        'heading'            => 'titre court et percutant, 5-8 mots max',
+        'text-editor'        => 'un ou plusieurs paragraphes en HTML valide (<p>, <strong>, <em>)',
+        'button'             => 'texte de bouton, appel à l\'action court (2-5 mots)',
+        'icon-box'           => 'titre court + description en HTML',
+        'image-box'          => 'titre court + description en HTML',
+        'testimonial'        => 'témoignage client réaliste avec nom et poste',
+        'counter'            => 'intitulé court de compteur',
+        'progress'           => 'intitulé de compétence ou progression',
+        'alert'              => 'titre d\'alerte et description concise',
+        'star-rating'        => 'intitulé court pour la note',
+        'call-to-action'     => 'titre accrocheur, description courte et texte de bouton',
+        'animated-headline'  => 'texte avant et texte surligné percutants',
+        'flip-box'           => 'titres et descriptions pour les deux faces',
+        'price-table'        => 'titre de plan, sous-titre, période et texte de bouton',
+        'blockquote'         => 'citation percutante et pertinente',
+    );
 
     /**
      * Génère le contenu pour une liste de widgets via l'API Claude.
      *
      * @param string $user_prompt  Le prompt saisi par l'utilisateur dans l'éditeur.
-     * @param array  $widgets      Tableau de widgets [ { id, type, current_text } ].
+     * @param array  $widgets      Tableau de widgets [ { id, type, fields } ].
      * @param int    $page_id      ID de la page WordPress.
      * @return array|WP_Error      Tableau de widgets avec contenu généré, ou WP_Error.
      */
@@ -41,13 +63,9 @@ class AICF_API_Handler {
             );
         }
 
-        // Construction du system prompt à partir du brief client
         $system_prompt = $this->build_system_prompt();
-
-        // Construction du user prompt avec la liste des widgets
-        $user_message = $this->build_user_message( $user_prompt, $widgets, $page_id );
-
-        $widget_count = count( $widgets );
+        $user_message  = $this->build_user_message( $user_prompt, $widgets, $page_id );
+        $widget_count  = count( $widgets );
 
         // Premier essai
         $result = $this->call_claude_api( $api_key, $system_prompt, $user_message, $widget_count );
@@ -56,7 +74,6 @@ class AICF_API_Handler {
             return $result;
         }
 
-        // Tentative de parsing du JSON retourné par Claude
         $parsed = $this->parse_response( $result );
 
         // Si le JSON est invalide, on retente une fois avec un prompt plus strict
@@ -65,7 +82,7 @@ class AICF_API_Handler {
                 . "CRITICAL INSTRUCTION: Your previous response was not valid JSON. "
                 . "You MUST respond with ONLY a raw JSON object. No markdown, no code blocks, no explanation. "
                 . "Start your response with { and end with }. "
-                . "Exact format: {\"widgets\": [{\"id\": \"WIDGET_ID\", \"content\": \"CONTENT\"}, ...]}";
+                . "Exact format: {\"widgets\": [{\"id\": \"WIDGET_ID\", \"content\": {\"field_key\": \"CONTENT\", ...}}, ...]}";
 
             $result = $this->call_claude_api( $api_key, $system_prompt, $strict_message, $widget_count );
 
@@ -96,12 +113,20 @@ class AICF_API_Handler {
         }
 
         $system .= "RÈGLES DE RÉDACTION :\n";
-        $system .= "- Pour les widgets de type 'heading' : rédige un titre court et percutant (5 à 8 mots maximum).\n";
-        $system .= "- Pour les widgets de type 'text-editor' : rédige un ou plusieurs paragraphes en HTML valide (utilise les balises <p>, <strong>, <em> si pertinent).\n";
-        $system .= "- Respecte exactement les IDs des widgets fournis dans ta réponse.\n";
+        $system .= "- Adapte le style au type de champ :\n";
+        $system .= "  * Titres (title, title_text, heading, before_text, highlighted_text, alert_title, etc.) : courts et percutants, 5-8 mots max.\n";
+        $system .= "  * Paragraphes/descriptions (editor, description, description_text, alert_description, footer_additional_info, etc.) : HTML valide avec <p>, <strong>, <em>.\n";
+        $system .= "  * Boutons (text, button_text) : appel à l'action clair, 2-5 mots.\n";
+        $system .= "  * Témoignages (testimonial_content) : avis client réaliste et crédible.\n";
+        $system .= "  * Noms (testimonial_name) : prénom et nom réalistes.\n";
+        $system .= "  * Postes (testimonial_job) : intitulé de poste crédible.\n";
+        $system .= "  * Citations (blockquote_content) : citation pertinente et percutante.\n";
+        $system .= "  * Sous-titres (sub_heading) : phrase d'accroche courte.\n";
+        $system .= "  * Périodes (period) : durée courte (ex: '/mois', '/an').\n";
+        $system .= "- Respecte exactement les IDs des widgets et les clés des champs fournis dans ta réponse.\n";
         $system .= "- Réponds UNIQUEMENT avec un objet JSON valide, sans texte avant ni après.\n";
-        $system .= "- Format de réponse obligatoire : {\"widgets\": [{\"id\": \"ID_DU_WIDGET\", \"content\": \"CONTENU_GENERE\"}, ...]}\n";
-        $system .= "- N'invente pas de widgets supplémentaires, traite uniquement ceux fournis.\n";
+        $system .= "- Format de réponse obligatoire : {\"widgets\": [{\"id\": \"ID_DU_WIDGET\", \"content\": {\"clé_du_champ\": \"CONTENU_GENERE\", ...}}, ...]}\n";
+        $system .= "- N'invente pas de widgets ni de champs supplémentaires, traite uniquement ceux fournis.\n";
         $system .= "- Rédige en français sauf si le prompt de l'utilisateur indique une autre langue.\n";
 
         return $system;
@@ -119,14 +144,30 @@ class AICF_API_Handler {
 
         foreach ( $widgets as $index => $widget ) {
             $num  = $index + 1;
-            $type = ( $widget['type'] === 'heading' ) ? 'heading (titre court, 5-8 mots max)' : 'text-editor (paragraphe HTML)';
+            $type = $widget['type'];
+            $hint = isset( self::$widget_types[ $type ] ) ? self::$widget_types[ $type ] : $type;
 
             $message .= $num . ". Widget ID: \"" . $widget['id'] . "\"\n";
-            $message .= "   Type: " . $type . "\n";
-            $message .= "   Contenu actuel: \"" . $widget['current_text'] . "\"\n\n";
+            $message .= "   Type: " . $type . " (" . $hint . ")\n";
+
+            // Format multi-champs (nouveau)
+            if ( isset( $widget['fields'] ) && is_array( $widget['fields'] ) && ! empty( $widget['fields'] ) ) {
+                $message .= "   Champs :\n";
+                foreach ( $widget['fields'] as $field_key => $field_value ) {
+                    $display_value = ! empty( $field_value ) ? '"' . $field_value . '"' : '(vide)';
+                    $message .= "     - " . $field_key . " : " . $display_value . "\n";
+                }
+            }
+            // Rétrocompatibilité ancien format (current_text)
+            elseif ( isset( $widget['current_text'] ) ) {
+                $message .= "   Contenu actuel: \"" . $widget['current_text'] . "\"\n";
+            }
+
+            $message .= "\n";
         }
 
-        $message .= "Génère le contenu pour chaque widget ci-dessus en respectant le format JSON demandé.";
+        $message .= "Génère le contenu pour chaque widget ci-dessus en respectant le format JSON demandé.\n";
+        $message .= "Pour chaque widget, retourne un objet content avec les mêmes clés de champs que celles listées ci-dessus.";
 
         return $message;
     }
@@ -141,12 +182,10 @@ class AICF_API_Handler {
      * @return string|WP_Error       Texte de la réponse de Claude, ou WP_Error.
      */
     private function call_claude_api( $api_key, $system_prompt, $user_message, $widget_count = 1 ) {
-        // Calculer les tokens nécessaires : au moins TOKENS_PER_WIDGET par widget,
-        // avec un minimum égal au réglage utilisateur
         $configured_tokens = AICF_Settings::get_max_tokens();
         $needed_tokens     = max( $configured_tokens, $widget_count * self::TOKENS_PER_WIDGET );
-        // Plafonner à 4096 pour éviter les abus
-        $max_tokens = min( $needed_tokens, 4096 );
+        // Plafonner à 8192 pour éviter les abus tout en supportant les pages complexes
+        $max_tokens = min( $needed_tokens, 8192 );
 
         $body = array(
             'model'       => AICF_Settings::get_model(),
@@ -171,7 +210,6 @@ class AICF_API_Handler {
             'body'    => wp_json_encode( $body ),
         ) );
 
-        // Erreur réseau / timeout
         if ( is_wp_error( $response ) ) {
             return new WP_Error(
                 'aicf_api_request_failed',
@@ -183,7 +221,6 @@ class AICF_API_Handler {
         $status_code = wp_remote_retrieve_response_code( $response );
         $body_raw    = wp_remote_retrieve_body( $response );
 
-        // Erreur HTTP (clé invalide, quota dépassé, etc.)
         if ( $status_code < 200 || $status_code >= 300 ) {
             $error_data = json_decode( $body_raw, true );
             $error_msg  = isset( $error_data['error']['message'] )
@@ -197,7 +234,6 @@ class AICF_API_Handler {
             );
         }
 
-        // Extraction du texte de la réponse Claude
         $data = json_decode( $body_raw, true );
 
         if ( ! isset( $data['content'][0]['text'] ) ) {
@@ -208,7 +244,6 @@ class AICF_API_Handler {
             );
         }
 
-        // Vérifier si la réponse a été tronquée (stop_reason = max_tokens)
         $stop_reason = isset( $data['stop_reason'] ) ? $data['stop_reason'] : '';
         if ( $stop_reason === 'max_tokens' ) {
             return new WP_Error(
@@ -231,7 +266,7 @@ class AICF_API_Handler {
     private function parse_response( $raw_text ) {
         $text = trim( $raw_text );
 
-        // Stratégie 1 : essayer le texte brut directement (cas idéal)
+        // Stratégie 1 : essayer le texte brut directement
         $decoded = json_decode( $text, true );
         if ( json_last_error() === JSON_ERROR_NONE && $this->is_valid_widget_response( $decoded ) ) {
             return $decoded['widgets'];
@@ -257,8 +292,6 @@ class AICF_API_Handler {
             }
         }
 
-        // Aucune stratégie n'a fonctionné
-        // Fournir un extrait de la réponse dans l'erreur pour le debug
         $preview = mb_substr( $text, 0, 200 );
         return new WP_Error(
             'aicf_invalid_json',
@@ -271,7 +304,8 @@ class AICF_API_Handler {
     }
 
     /**
-     * Vérifie qu'un tableau décodé a la structure attendue : { widgets: [ { id, content }, ... ] }
+     * Vérifie qu'un tableau décodé a la structure attendue.
+     * Accepte content comme string (ancien format) ou array/object (nouveau format multi-champs).
      *
      * @param mixed $decoded  Données décodées depuis JSON.
      * @return bool
@@ -285,8 +319,12 @@ class AICF_API_Handler {
             return false;
         }
 
-        // Vérifier qu'au moins le premier widget a un id et un content
         $first = $decoded['widgets'][0];
-        return isset( $first['id'] ) && isset( $first['content'] );
+        if ( ! isset( $first['id'] ) || ! isset( $first['content'] ) ) {
+            return false;
+        }
+
+        // Accepter content comme string (ancien) ou array (nouveau multi-champs)
+        return is_string( $first['content'] ) || is_array( $first['content'] );
     }
 }
