@@ -1,8 +1,8 @@
 /**
  * AI Content Filler — Panneau injecté dans l'éditeur Elementor.
  *
- * Ce script crée un panneau flottant en bas à gauche de l'éditeur,
- * scanne les widgets de la page (heading, text-editor, button, icon-box, etc.),
+ * Scanne les widgets de la page (heading, text-editor, button, icon-box,
+ * carrousels de témoignages, diapositives, etc.),
  * permet à l'utilisateur de sélectionner/désélectionner les widgets,
  * et envoie le tout à l'API REST du plugin pour génération via Claude.
  */
@@ -10,7 +10,7 @@
     'use strict';
 
     if (typeof aicfConfig === 'undefined') {
-        console.error('[AI Content Filler] aicfConfig non trouvé. Le script ne peut pas démarrer.');
+        console.error('[AI Content Filler] aicfConfig non trouvé.');
         return;
     }
 
@@ -18,103 +18,114 @@
     var isGenerating = false;
     var panelCreated = false;
 
-    // État du flux en 2 étapes
-    var currentStep = 'prompt';  // 'prompt' | 'select' | 'generating'
+    var currentStep = 'prompt';
     var scannedWidgets = [];
     var cachedRootContainer = null;
     var cachedPageId = 0;
 
     // ---------------------------------------------------------------
     // Registre des types de widgets supportés
-    // Chaque entrée définit les champs texte à extraire et le label UI.
+    // - fields    : champs texte directs
+    // - repeaters : listes d'items (repeater Elementor)
     // ---------------------------------------------------------------
     var WIDGET_REGISTRY = {
         // --- Elementor Free ---
         'heading': {
-            label: 'Titre',
-            cssClass: 'heading',
+            label: 'Titre', cssClass: 'heading',
             fields: { 'title': 'Titre' }
         },
         'text-editor': {
-            label: 'Texte',
-            cssClass: 'text',
+            label: 'Texte', cssClass: 'text',
             fields: { 'editor': 'Contenu HTML' }
         },
         'button': {
-            label: 'Bouton',
-            cssClass: 'button',
+            label: 'Bouton', cssClass: 'button',
             fields: { 'text': 'Texte du bouton' }
         },
         'icon-box': {
-            label: 'Boîte icône',
-            cssClass: 'box',
+            label: 'Boîte icône', cssClass: 'box',
             fields: { 'title_text': 'Titre', 'description_text': 'Description' }
         },
         'image-box': {
-            label: 'Boîte image',
-            cssClass: 'box',
+            label: 'Boîte image', cssClass: 'box',
             fields: { 'title_text': 'Titre', 'description_text': 'Description' }
         },
         'testimonial': {
-            label: 'Témoignage',
-            cssClass: 'testimonial',
+            label: 'Témoignage', cssClass: 'testimonial',
             fields: { 'testimonial_content': 'Témoignage', 'testimonial_name': 'Nom', 'testimonial_job': 'Poste' }
         },
         'counter': {
-            label: 'Compteur',
-            cssClass: 'data',
+            label: 'Compteur', cssClass: 'data',
             fields: { 'title': 'Titre' }
         },
         'progress': {
-            label: 'Progression',
-            cssClass: 'data',
+            label: 'Progression', cssClass: 'data',
             fields: { 'title': 'Titre' }
         },
         'alert': {
-            label: 'Alerte',
-            cssClass: 'alert',
+            label: 'Alerte', cssClass: 'alert',
             fields: { 'alert_title': 'Titre', 'alert_description': 'Description' }
         },
         'star-rating': {
-            label: 'Étoiles',
-            cssClass: 'data',
+            label: 'Étoiles', cssClass: 'data',
             fields: { 'title': 'Titre' }
         },
-        // --- Elementor Pro ---
+
+        // --- Elementor Pro (champs directs) ---
         'call-to-action': {
-            label: 'CTA',
-            cssClass: 'cta',
+            label: 'CTA', cssClass: 'cta',
             fields: { 'title': 'Titre', 'description': 'Description', 'button_text': 'Bouton' }
         },
         'animated-headline': {
-            label: 'Titre animé',
-            cssClass: 'heading',
-            fields: { 'before_text': 'Texte avant', 'highlighted_text': 'Texte surligné' }
+            label: 'Titre animé', cssClass: 'heading',
+            fields: { 'before_text': 'Texte avant', 'highlighted_text': 'Texte surligné', 'rotating_text': 'Texte rotatif', 'after_text': 'Texte après' }
         },
         'flip-box': {
-            label: 'Flip Box',
-            cssClass: 'box',
+            label: 'Flip Box', cssClass: 'box',
             fields: { 'title_text_a': 'Titre avant', 'description_text_a': 'Desc. avant', 'title_text_b': 'Titre arrière', 'description_text_b': 'Desc. arrière' }
         },
         'price-table': {
-            label: 'Table de prix',
-            cssClass: 'data',
+            label: 'Table de prix', cssClass: 'data',
             fields: { 'heading': 'Titre', 'sub_heading': 'Sous-titre', 'period': 'Période', 'footer_additional_info': 'Info complémentaire', 'button_text': 'Bouton' }
         },
         'blockquote': {
-            label: 'Citation',
-            cssClass: 'testimonial',
+            label: 'Citation', cssClass: 'testimonial',
             fields: { 'blockquote_content': 'Citation' }
+        },
+
+        // --- Elementor Pro (widgets avec repeaters) ---
+        'testimonial-carousel': {
+            label: 'Carrousel avis', cssClass: 'testimonial',
+            repeaters: {
+                'slides': { fields: { 'content': 'Témoignage', 'name': 'Nom', 'title': 'Poste' } }
+            }
+        },
+        'reviews': {
+            label: 'Avis', cssClass: 'testimonial',
+            repeaters: {
+                'slides': { fields: { 'review_content': 'Avis', 'reviewer_name': 'Nom', 'reviewer_title': 'Poste' } }
+            }
+        },
+        'slides': {
+            label: 'Diapositives', cssClass: 'cta',
+            repeaters: {
+                'slides': { fields: { 'heading': 'Titre', 'description': 'Description', 'button_text': 'Bouton' } }
+            }
+        },
+        'price-list': {
+            label: 'Liste de prix', cssClass: 'data',
+            repeaters: {
+                'price_list': { fields: { 'title': 'Titre', 'item_description': 'Description', 'price': 'Prix' } }
+            }
         }
     };
 
-    /**
-     * Crée et injecte le panneau HTML dans l'éditeur.
-     */
+    // ---------------------------------------------------------------
+    // Création du panneau
+    // ---------------------------------------------------------------
+
     function createPanel() {
-        if (panelCreated || document.getElementById('aicf-panel')) {
-            return;
-        }
+        if (panelCreated || document.getElementById('aicf-panel')) return;
         panelCreated = true;
 
         var panelHTML =
@@ -151,30 +162,83 @@
     }
 
     function setStatus(message, type) {
-        var $status = $('#aicf-status');
-        $status
+        $('#aicf-status')
             .removeClass('aicf-status-idle aicf-status-loading aicf-status-success aicf-status-error')
             .addClass('aicf-status-' + type)
             .text(message);
     }
 
     // ---------------------------------------------------------------
-    // Scan des widgets Elementor
+    // Helpers Elementor
     // ---------------------------------------------------------------
 
+    function getSettingValue(model, settingKey) {
+        if (typeof model.getSetting === 'function') {
+            try { var v = model.getSetting(settingKey); if (v) return v; } catch (e) {}
+        }
+        try {
+            var s = model.get('settings');
+            if (s && typeof s.get === 'function') { var v2 = s.get(settingKey); if (v2) return v2; }
+        } catch (e) {}
+        return '';
+    }
+
     /**
-     * Parcourt récursivement les containers Elementor pour trouver
-     * tous les widgets supportés et extraire leurs champs texte.
+     * Lit les données d'un repeater Elementor (Backbone Collection ou tableau).
      */
+    function getRepeaterValue(model, repeaterKey) {
+        try {
+            var settings = model.get('settings');
+            if (!settings || typeof settings.get !== 'function') return [];
+            var repeater = settings.get(repeaterKey);
+            if (!repeater) return [];
+            if (repeater.models) {
+                return repeater.models.map(function (m) {
+                    return m.attributes ? JSON.parse(JSON.stringify(m.attributes)) : {};
+                });
+            }
+            if (Array.isArray(repeater)) return repeater;
+            if (typeof repeater.toJSON === 'function') return repeater.toJSON();
+        } catch (e) {
+            console.warn('[AI Content Filler] Erreur lecture repeater "' + repeaterKey + '":', e);
+        }
+        return [];
+    }
+
+    function getChildrenFromModel(model) {
+        var result = [];
+        try {
+            var elements = model.get('elements');
+            if (elements && elements.models) {
+                elements.models.forEach(function (childModel) {
+                    result.push({ model: childModel, children: getChildrenFromModel(childModel) });
+                });
+            }
+        } catch (e) {}
+        return result;
+    }
+
+    function findContainerById(container, targetId) {
+        if (!container) return null;
+        if (container.model && container.model.get('id') === targetId) return container;
+        var children = container.children;
+        if (!children || !children.length) return null;
+        for (var i = 0; i < children.length; i++) {
+            var found = findContainerById(children[i], targetId);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    // ---------------------------------------------------------------
+    // Scan des widgets
+    // ---------------------------------------------------------------
+
     function scanWidgets(container) {
         var widgets = [];
-
-        if (!container) {
-            return widgets;
-        }
+        if (!container) return widgets;
 
         var children = null;
-
         if (container.children && container.children.length > 0) {
             children = container.children;
         } else if (container.model && container.model.get && container.model.get('elements')) {
@@ -191,16 +255,11 @@
             }
         }
 
-        if (!children || children.length === 0) {
-            return widgets;
-        }
+        if (!children || children.length === 0) return widgets;
 
         for (var i = 0; i < children.length; i++) {
             var child = children[i];
-
-            if (!child || !child.model) {
-                continue;
-            }
+            if (!child || !child.model) continue;
 
             try {
                 var elType = child.model.get('elType');
@@ -211,17 +270,37 @@
                     var widgetId = child.model.get('id');
                     var fields = {};
 
-                    for (var key in reg.fields) {
-                        if (reg.fields.hasOwnProperty(key)) {
-                            fields[key] = getSettingValue(child.model, key) || '';
+                    // Champs directs
+                    if (reg.fields) {
+                        for (var key in reg.fields) {
+                            if (reg.fields.hasOwnProperty(key)) {
+                                fields[key] = getSettingValue(child.model, key) || '';
+                            }
                         }
                     }
 
-                    widgets.push({
-                        id: widgetId,
-                        type: widgetType,
-                        fields: fields
-                    });
+                    // Champs repeaters (notation pointée : repKey.index.field)
+                    if (reg.repeaters) {
+                        for (var repKey in reg.repeaters) {
+                            if (!reg.repeaters.hasOwnProperty(repKey)) continue;
+                            var repDef = reg.repeaters[repKey];
+                            var repData = getRepeaterValue(child.model, repKey);
+
+                            if (repData && repData.length) {
+                                for (var ri = 0; ri < repData.length; ri++) {
+                                    var item = repData[ri];
+                                    for (var fk in repDef.fields) {
+                                        if (!repDef.fields.hasOwnProperty(fk)) continue;
+                                        fields[repKey + '.' + ri + '.' + fk] = (item && item[fk]) || '';
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (Object.keys(fields).length > 0) {
+                        widgets.push({ id: widgetId, type: widgetType, fields: fields });
+                    }
                 }
             } catch (e) {
                 console.warn('[AI Content Filler] Erreur lors du scan d\'un widget:', e);
@@ -236,112 +315,45 @@
         return widgets;
     }
 
-    function getSettingValue(model, settingKey) {
-        if (typeof model.getSetting === 'function') {
-            try {
-                var val = model.getSetting(settingKey);
-                if (val) return val;
-            } catch (e) {}
-        }
-
-        try {
-            var settings = model.get('settings');
-            if (settings && typeof settings.get === 'function') {
-                var val2 = settings.get(settingKey);
-                if (val2) return val2;
-            }
-        } catch (e) {}
-
-        return '';
-    }
-
-    function getChildrenFromModel(model) {
-        var result = [];
-        try {
-            var elements = model.get('elements');
-            if (elements && elements.models) {
-                elements.models.forEach(function (childModel) {
-                    result.push({
-                        model: childModel,
-                        children: getChildrenFromModel(childModel)
-                    });
-                });
-            }
-        } catch (e) {}
-        return result;
-    }
-
-    function findContainerById(container, targetId) {
-        if (!container) {
-            return null;
-        }
-
-        if (container.model && container.model.get('id') === targetId) {
-            return container;
-        }
-
-        var children = container.children;
-        if (!children || !children.length) {
-            return null;
-        }
-
-        for (var i = 0; i < children.length; i++) {
-            var found = findContainerById(children[i], targetId);
-            if (found) {
-                return found;
-            }
-        }
-
-        return null;
-    }
-
     // ---------------------------------------------------------------
-    // Étape 1 : Scan et affichage de la liste des widgets
+    // Affichage de la liste
     // ---------------------------------------------------------------
 
-    /**
-     * Extrait un aperçu texte depuis les champs d'un widget.
-     * Concatène les valeurs non vides avec " | ".
-     */
     function getFieldsPreview(fields, maxLen) {
         var parts = [];
         for (var key in fields) {
-            if (fields.hasOwnProperty(key)) {
-                var val = fields[key];
-                if (val) {
-                    var plain = val.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
-                    if (plain) parts.push(plain);
-                }
+            if (!fields.hasOwnProperty(key)) continue;
+            var val = fields[key];
+            if (val) {
+                var plain = val.replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+                if (plain) parts.push(plain);
             }
         }
         if (!parts.length) return '(vide)';
         var combined = parts.join(' | ');
-        if (combined.length > maxLen) {
-            return combined.substring(0, maxLen) + '...';
-        }
-        return combined;
+        return combined.length > maxLen ? combined.substring(0, maxLen) + '...' : combined;
     }
 
-    /**
-     * Construit et affiche la liste des widgets scannés avec checkboxes.
-     */
+    function countRepeaterItems(fields) {
+        var indices = {};
+        for (var key in fields) {
+            if (!fields.hasOwnProperty(key)) continue;
+            var parts = key.split('.');
+            if (parts.length === 3) indices[parts[0] + '.' + parts[1]] = true;
+        }
+        return Object.keys(indices).length;
+    }
+
     function renderWidgetList(widgets) {
         var $container = $('#aicf-widget-list-container');
-
-        if (!widgets.length) {
-            $container.empty();
-            return;
-        }
+        if (!widgets.length) { $container.empty(); return; }
 
         var html = '<div id="aicf-widget-list">';
-
-        // Header de la liste
         html += '<div class="aicf-wl-header">';
         html += '<span class="aicf-wl-count">' + widgets.length + ' widget' + (widgets.length > 1 ? 's' : '') + ' trouvé' + (widgets.length > 1 ? 's' : '') + '</span>';
         html += '<button type="button" id="aicf-select-all" class="aicf-wl-toggle-all" data-state="all">Tout désélect.</button>';
         html += '</div>';
 
-        // Items
         html += '<div class="aicf-wl-items">';
         for (var i = 0; i < widgets.length; i++) {
             var w = widgets[i];
@@ -349,30 +361,31 @@
             var typeLabel = reg ? reg.label : w.type;
             var cssClass = reg ? reg.cssClass : 'default';
             var preview = getFieldsPreview(w.fields, 40);
-            var fieldCount = reg ? Object.keys(reg.fields).length : 0;
-            var fieldBadge = fieldCount > 1 ? ' <span class="aicf-wl-field-count">' + fieldCount + ' champs</span>' : '';
+
+            var infoBadge = '';
+            if (reg && reg.repeaters) {
+                var itemCount = countRepeaterItems(w.fields);
+                if (itemCount > 0) infoBadge = ' <span class="aicf-wl-field-count">' + itemCount + ' item' + (itemCount > 1 ? 's' : '') + '</span>';
+            } else if (reg && reg.fields) {
+                var fc = Object.keys(reg.fields).length;
+                if (fc > 1) infoBadge = ' <span class="aicf-wl-field-count">' + fc + ' champs</span>';
+            }
 
             html += '<div class="aicf-wl-item" data-widget-id="' + w.id + '">';
-            html += '<label class="aicf-wl-checkbox-label">';
-            html += '<input type="checkbox" class="aicf-widget-checkbox" data-widget-id="' + w.id + '" checked />';
-            html += '<span class="aicf-wl-checkmark"></span>';
-            html += '</label>';
+            html += '<label class="aicf-wl-checkbox-label"><input type="checkbox" class="aicf-widget-checkbox" data-widget-id="' + w.id + '" checked /><span class="aicf-wl-checkmark"></span></label>';
             html += '<div class="aicf-wl-info">';
-            html += '<span class="aicf-wl-type aicf-wl-type-' + cssClass + '">' + typeLabel + fieldBadge + '</span>';
+            html += '<span class="aicf-wl-type aicf-wl-type-' + cssClass + '">' + typeLabel + infoBadge + '</span>';
             html += '<span class="aicf-wl-preview">' + $('<span>').text(preview).html() + '</span>';
             html += '</div>';
             html += '<button type="button" class="aicf-widget-remove" data-widget-id="' + w.id + '" title="Exclure ce widget">&times;</button>';
             html += '</div>';
         }
-        html += '</div>';
-        html += '</div>';
+        html += '</div></div>';
 
         $container.html(html);
     }
 
-    function getSelectedCount() {
-        return $('.aicf-widget-checkbox:checked').length;
-    }
+    function getSelectedCount() { return $('.aicf-widget-checkbox:checked').length; }
 
     function updateGenerateButtonLabel() {
         var count = getSelectedCount();
@@ -384,51 +397,37 @@
         }
     }
 
-    /**
-     * Handler du clic sur le bouton "Scanner les widgets".
-     */
+    function updateWidgetCount() {
+        var total = $('.aicf-wl-item').length;
+        var selected = getSelectedCount();
+        $('.aicf-wl-count').text(selected + '/' + total + ' widget' + (total > 1 ? 's' : '') + ' sélectionné' + (selected > 1 ? 's' : ''));
+    }
+
+    // ---------------------------------------------------------------
+    // Étape 1 : Scan
+    // ---------------------------------------------------------------
+
     function onScanClick() {
         if (isGenerating) return;
-
         try {
             var prompt = $.trim($('#aicf-prompt').val());
-
-            if (!prompt) {
-                setStatus(config.i18n.empty_prompt, 'error');
-                return;
-            }
-
-            if (typeof elementor === 'undefined') {
-                setStatus('Elementor n\'est pas chargé.', 'error');
-                return;
-            }
+            if (!prompt) { setStatus(config.i18n.empty_prompt, 'error'); return; }
+            if (typeof elementor === 'undefined') { setStatus('Elementor n\'est pas chargé.', 'error'); return; }
 
             cachedPageId = 0;
             try {
-                cachedPageId = elementor.config.document.id ||
-                               elementor.config.initial_document.id ||
-                               0;
+                cachedPageId = elementor.config.document.id || elementor.config.initial_document.id || 0;
             } catch (e) {
                 var match = window.location.search.match(/post=(\d+)/);
-                if (match) {
-                    cachedPageId = parseInt(match[1], 10);
-                }
+                if (match) cachedPageId = parseInt(match[1], 10);
             }
-
-            if (!cachedPageId) {
-                setStatus('Impossible de déterminer l\'ID de la page.', 'error');
-                return;
-            }
+            if (!cachedPageId) { setStatus('Impossible de déterminer l\'ID de la page.', 'error'); return; }
 
             cachedRootContainer = null;
             try {
                 var currentDocument = elementor.documents.getCurrent();
-                if (currentDocument && currentDocument.container) {
-                    cachedRootContainer = currentDocument.container;
-                }
-            } catch (e) {
-                console.warn('[AI Content Filler] Impossible d\'accéder au document courant:', e);
-            }
+                if (currentDocument && currentDocument.container) cachedRootContainer = currentDocument.container;
+            } catch (e) {}
 
             if (!cachedRootContainer) {
                 try {
@@ -440,77 +439,47 @@
                             })
                         };
                     }
-                } catch (e) {
-                    console.warn('[AI Content Filler] Fallback elementor.elements échoué:', e);
-                }
+                } catch (e) {}
             }
 
-            if (!cachedRootContainer) {
-                setStatus('Document Elementor non accessible. Essayez de recharger l\'éditeur.', 'error');
-                return;
-            }
+            if (!cachedRootContainer) { setStatus('Document Elementor non accessible.', 'error'); return; }
 
             scannedWidgets = scanWidgets(cachedRootContainer);
-
-            if (!scannedWidgets.length) {
-                setStatus(config.i18n.no_widgets, 'error');
-                return;
-            }
+            if (!scannedWidgets.length) { setStatus(config.i18n.no_widgets, 'error'); return; }
 
             currentStep = 'select';
             renderWidgetList(scannedWidgets);
-
             $('#aicf-scan-btn').hide();
             $('#aicf-generate-btn').show();
             updateGenerateButtonLabel();
-
             setStatus('Sélectionnez les widgets à remplir, puis cliquez sur Générer.', 'idle');
-
         } catch (err) {
-            console.error('[AI Content Filler] Erreur lors du scan:', err);
+            console.error('[AI Content Filler] Erreur scan:', err);
             setStatus(config.i18n.error + ' : ' + err.message, 'error');
         }
     }
 
     // ---------------------------------------------------------------
-    // Interactions avec la liste de widgets
+    // Interactions liste
     // ---------------------------------------------------------------
 
     function onWidgetRemove(e) {
         e.preventDefault();
         var widgetId = $(this).data('widget-id');
-
         $('.aicf-wl-item[data-widget-id="' + widgetId + '"]').slideUp(200, function () {
             $(this).remove();
             updateWidgetCount();
             updateGenerateButtonLabel();
-
-            if ($('.aicf-wl-item').length === 0) {
-                onBackToPrompt();
-                setStatus(config.i18n.no_widgets, 'error');
-            }
+            if ($('.aicf-wl-item').length === 0) { onBackToPrompt(); setStatus(config.i18n.no_widgets, 'error'); }
         });
-
-        scannedWidgets = scannedWidgets.filter(function (w) {
-            return w.id !== widgetId;
-        });
+        scannedWidgets = scannedWidgets.filter(function (w) { return w.id !== widgetId; });
     }
 
-    function updateWidgetCount() {
-        var total = $('.aicf-wl-item').length;
-        var selected = getSelectedCount();
-        $('.aicf-wl-count').text(selected + '/' + total + ' widget' + (total > 1 ? 's' : '') + ' sélectionné' + (selected > 1 ? 's' : ''));
-    }
-
-    function onWidgetCheckboxChange() {
-        updateWidgetCount();
-        updateGenerateButtonLabel();
-    }
+    function onWidgetCheckboxChange() { updateWidgetCount(); updateGenerateButtonLabel(); }
 
     function onSelectAllToggle() {
         var $btn = $(this);
         var state = $btn.data('state');
-
         if (state === 'all') {
             $('.aicf-widget-checkbox').prop('checked', false);
             $btn.data('state', 'none').text('Tout sélect.');
@@ -518,7 +487,6 @@
             $('.aicf-widget-checkbox').prop('checked', true);
             $btn.data('state', 'all').text('Tout désélect.');
         }
-
         updateWidgetCount();
         updateGenerateButtonLabel();
     }
@@ -528,7 +496,6 @@
         scannedWidgets = [];
         cachedRootContainer = null;
         cachedPageId = 0;
-
         $('#aicf-widget-list-container').empty();
         $('#aicf-generate-btn').hide();
         $('#aicf-scan-btn').show();
@@ -536,38 +503,21 @@
     }
 
     // ---------------------------------------------------------------
-    // Étape 2 : Génération du contenu
+    // Étape 2 : Génération
     // ---------------------------------------------------------------
 
     function onGenerateClick() {
         if (isGenerating) return;
-
         try {
             var prompt = $.trim($('#aicf-prompt').val());
-
-            if (!prompt) {
-                setStatus(config.i18n.empty_prompt, 'error');
-                return;
-            }
+            if (!prompt) { setStatus(config.i18n.empty_prompt, 'error'); return; }
 
             var selectedIds = [];
-            $('.aicf-widget-checkbox:checked').each(function () {
-                selectedIds.push($(this).data('widget-id'));
-            });
+            $('.aicf-widget-checkbox:checked').each(function () { selectedIds.push($(this).data('widget-id')); });
+            if (!selectedIds.length) { setStatus('Aucun widget sélectionné.', 'error'); return; }
 
-            if (!selectedIds.length) {
-                setStatus('Aucun widget sélectionné. Cochez au moins un widget.', 'error');
-                return;
-            }
-
-            var selectedWidgets = scannedWidgets.filter(function (w) {
-                return selectedIds.indexOf(w.id) !== -1;
-            });
-
-            if (!selectedWidgets.length) {
-                setStatus('Aucun widget sélectionné.', 'error');
-                return;
-            }
+            var selectedWidgets = scannedWidgets.filter(function (w) { return selectedIds.indexOf(w.id) !== -1; });
+            if (!selectedWidgets.length) { setStatus('Aucun widget sélectionné.', 'error'); return; }
 
             isGenerating = true;
             currentStep = 'generating';
@@ -576,38 +526,22 @@
             $('#aicf-scan-btn').prop('disabled', true);
             $('.aicf-widget-checkbox, .aicf-widget-remove, #aicf-select-all').prop('disabled', true);
 
-            var payload = {
-                page_id: cachedPageId,
-                user_prompt: prompt,
-                widgets: selectedWidgets
-            };
-
             fetch(config.restUrl, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-WP-Nonce': config.nonce
-                },
+                headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': config.nonce },
                 credentials: 'same-origin',
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ page_id: cachedPageId, user_prompt: prompt, widgets: selectedWidgets })
             })
             .then(function (response) {
-                return response.json().then(function (data) {
-                    return { status: response.status, data: data };
-                });
+                return response.json().then(function (data) { return { status: response.status, data: data }; });
             })
             .then(function (result) {
                 if (result.status !== 200 || !result.data.success) {
                     var errorMsg = '';
-                    if (result.data && result.data.message) {
-                        errorMsg = result.data.message;
-                    } else if (result.data && result.data.data && result.data.data.message) {
-                        errorMsg = result.data.data.message;
-                    } else if (result.data && result.data.code) {
-                        errorMsg = result.data.code;
-                    } else {
-                        errorMsg = 'HTTP ' + result.status;
-                    }
+                    if (result.data && result.data.message) errorMsg = result.data.message;
+                    else if (result.data && result.data.data && result.data.data.message) errorMsg = result.data.data.message;
+                    else if (result.data && result.data.code) errorMsg = result.data.code;
+                    else errorMsg = 'HTTP ' + result.status;
                     throw new Error(errorMsg);
                 }
 
@@ -646,64 +580,70 @@
         }
     }
 
+    // ---------------------------------------------------------------
+    // Application du contenu généré
+    // ---------------------------------------------------------------
+
     /**
-     * Applique le contenu généré par Claude aux widgets Elementor.
-     *
-     * Supporte deux formats de réponse :
-     * - Nouveau : content = { field_key: value, ... } (multi-champs)
-     * - Ancien :  content = "string" (rétrocompatibilité, appliqué au 1er champ du registre)
+     * Applique le contenu généré aux widgets Elementor.
+     * Gère les champs directs ET les champs repeater (notation pointée).
      */
     function applyGeneratedContent(generatedWidgets, rootContainer) {
-        if (!generatedWidgets || !generatedWidgets.length) {
-            return 0;
-        }
+        if (!generatedWidgets || !generatedWidgets.length) return 0;
 
         var appliedCount = 0;
 
         generatedWidgets.forEach(function (gw) {
             try {
                 var widgetContainer = findContainerById(rootContainer, gw.id);
-
-                if (!widgetContainer) {
-                    console.warn('[AI Content Filler] Widget non trouvé dans l\'arbre:', gw.id);
-                    return;
-                }
+                if (!widgetContainer) { console.warn('[AI Content Filler] Widget non trouvé:', gw.id); return; }
 
                 var widgetType = widgetContainer.model.get('widgetType');
                 var settingsToApply = {};
 
                 if (typeof gw.content === 'object' && gw.content !== null) {
-                    // Nouveau format multi-champs : { field_key: value }
                     settingsToApply = gw.content;
                 } else if (typeof gw.content === 'string') {
-                    // Ancien format : string → appliqué au premier champ du registre
                     var reg = WIDGET_REGISTRY[widgetType];
-                    if (reg) {
-                        var firstKey = Object.keys(reg.fields)[0];
-                        settingsToApply[firstKey] = gw.content;
+                    if (reg && reg.fields) {
+                        settingsToApply[Object.keys(reg.fields)[0]] = gw.content;
                     } else {
-                        // Fallback absolu pour les types inconnus
-                        var fallbackKey = (widgetType === 'heading') ? 'title' : 'editor';
-                        settingsToApply[fallbackKey] = gw.content;
+                        settingsToApply[(widgetType === 'heading') ? 'title' : 'editor'] = gw.content;
                     }
                 }
 
-                // Appliquer chaque champ au widget Elementor
+                // Séparer champs directs / champs repeater
+                var directSettings = {};
+                var repeaterUpdates = {};
+
+                for (var key in settingsToApply) {
+                    if (!settingsToApply.hasOwnProperty(key)) continue;
+                    var parts = key.split('.');
+                    if (parts.length === 3) {
+                        var rKey = parts[0], rIdx = parseInt(parts[1], 10), rField = parts[2];
+                        if (!repeaterUpdates[rKey]) repeaterUpdates[rKey] = {};
+                        if (!repeaterUpdates[rKey][rIdx]) repeaterUpdates[rKey][rIdx] = {};
+                        repeaterUpdates[rKey][rIdx][rField] = settingsToApply[key];
+                    } else {
+                        directSettings[key] = settingsToApply[key];
+                    }
+                }
+
                 var widgetApplied = false;
-                for (var settingKey in settingsToApply) {
-                    if (!settingsToApply.hasOwnProperty(settingKey)) continue;
 
-                    var value = settingsToApply[settingKey];
-                    if (applySettingToWidget(widgetContainer, settingKey, value)) {
-                        widgetApplied = true;
-                    }
+                for (var dk in directSettings) {
+                    if (!directSettings.hasOwnProperty(dk)) continue;
+                    if (applySettingToWidget(widgetContainer, dk, directSettings[dk])) widgetApplied = true;
                 }
 
-                if (widgetApplied) {
-                    appliedCount++;
+                for (var repK in repeaterUpdates) {
+                    if (!repeaterUpdates.hasOwnProperty(repK)) continue;
+                    if (applyRepeaterUpdate(widgetContainer, repK, repeaterUpdates[repK])) widgetApplied = true;
                 }
+
+                if (widgetApplied) appliedCount++;
             } catch (e) {
-                console.error('[AI Content Filler] Erreur lors de l\'application au widget ' + gw.id + ':', e);
+                console.error('[AI Content Filler] Erreur application widget ' + gw.id + ':', e);
             }
         });
 
@@ -717,28 +657,21 @@
     }
 
     /**
-     * Applique une valeur à un setting d'un widget Elementor.
-     * Utilise $e.run en priorité pour la compatibilité undo/redo.
+     * Applique une valeur à un setting direct.
      */
     function applySettingToWidget(widgetContainer, settingKey, value) {
         try {
             if (typeof $e !== 'undefined' && $e.run) {
-                var settings = {};
-                settings[settingKey] = value;
-                $e.run('document/elements/settings', {
-                    container: widgetContainer,
-                    settings: settings
-                });
+                var s = {};
+                s[settingKey] = value;
+                $e.run('document/elements/settings', { container: widgetContainer, settings: s });
                 return true;
             } else if (typeof widgetContainer.model.setSetting === 'function') {
                 widgetContainer.model.setSetting(settingKey, value);
                 return true;
             } else {
-                var settingsObj = widgetContainer.model.get('settings');
-                if (settingsObj && typeof settingsObj.set === 'function') {
-                    settingsObj.set(settingKey, value);
-                    return true;
-                }
+                var sObj = widgetContainer.model.get('settings');
+                if (sObj && typeof sObj.set === 'function') { sObj.set(settingKey, value); return true; }
             }
         } catch (e) {
             console.error('[AI Content Filler] Erreur setSetting(' + settingKey + '):', e);
@@ -746,25 +679,82 @@
         return false;
     }
 
+    /**
+     * Met à jour les champs texte d'un repeater Elementor.
+     * @param {Object} widgetContainer  Container du widget
+     * @param {string} repeaterKey      Clé du repeater (ex: 'slides')
+     * @param {Object} updates          { index: { field: value } }
+     */
+    function applyRepeaterUpdate(widgetContainer, repeaterKey, updates) {
+        try {
+            var settings = widgetContainer.model.get('settings');
+            if (!settings || typeof settings.get !== 'function') return false;
+
+            var repeater = settings.get(repeaterKey);
+            if (!repeater) return false;
+
+            var applied = false;
+
+            // Backbone Collection
+            if (repeater.models) {
+                for (var idx in updates) {
+                    if (!updates.hasOwnProperty(idx)) continue;
+                    var itemIdx = parseInt(idx, 10);
+                    if (itemIdx >= repeater.models.length) continue;
+
+                    var itemModel = repeater.models[itemIdx];
+                    var fields = updates[idx];
+
+                    for (var field in fields) {
+                        if (fields.hasOwnProperty(field)) {
+                            itemModel.set(field, fields[field]);
+                        }
+                    }
+                    applied = true;
+                }
+
+                if (applied) {
+                    settings.trigger('change', settings);
+                    settings.trigger('change:' + repeaterKey, settings);
+                }
+            }
+            // Tableau simple (fallback)
+            else if (Array.isArray(repeater)) {
+                var modified = JSON.parse(JSON.stringify(repeater));
+                for (var idx2 in updates) {
+                    if (!updates.hasOwnProperty(idx2)) continue;
+                    var itemIdx2 = parseInt(idx2, 10);
+                    if (itemIdx2 >= modified.length) continue;
+
+                    var fields2 = updates[idx2];
+                    for (var field2 in fields2) {
+                        if (fields2.hasOwnProperty(field2)) {
+                            modified[itemIdx2][field2] = fields2[field2];
+                        }
+                    }
+                    applied = true;
+                }
+
+                if (applied) {
+                    applySettingToWidget(widgetContainer, repeaterKey, modified);
+                }
+            }
+
+            return applied;
+        } catch (e) {
+            console.error('[AI Content Filler] Erreur repeater "' + repeaterKey + '":', e);
+            return false;
+        }
+    }
+
     // ---------------------------------------------------------------
     // Initialisation
     // ---------------------------------------------------------------
 
     function waitForElementorAndInit() {
-        if (typeof elementor !== 'undefined' && elementor.documents) {
-            createPanel();
-            return;
-        }
-
-        $(window).on('elementor:init', function () {
-            setTimeout(createPanel, 500);
-        });
-
-        setTimeout(function () {
-            if (!panelCreated) {
-                createPanel();
-            }
-        }, 5000);
+        if (typeof elementor !== 'undefined' && elementor.documents) { createPanel(); return; }
+        $(window).on('elementor:init', function () { setTimeout(createPanel, 500); });
+        setTimeout(function () { if (!panelCreated) createPanel(); }, 5000);
     }
 
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
