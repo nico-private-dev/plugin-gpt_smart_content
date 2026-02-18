@@ -27,21 +27,28 @@ class AICF_API_Handler {
      * Chaque type est associé à une description concise pour le prompt.
      */
     private static $widget_types = array(
-        'heading'            => 'titre court et percutant, 5-8 mots max',
-        'text-editor'        => 'un ou plusieurs paragraphes en HTML valide (<p>, <strong>, <em>)',
-        'button'             => 'texte de bouton, appel à l\'action court (2-5 mots)',
-        'icon-box'           => 'titre court + description en HTML',
-        'image-box'          => 'titre court + description en HTML',
-        'testimonial'        => 'témoignage client réaliste avec nom et poste',
-        'counter'            => 'intitulé court de compteur',
-        'progress'           => 'intitulé de compétence ou progression',
-        'alert'              => 'titre d\'alerte et description concise',
-        'star-rating'        => 'intitulé court pour la note',
-        'call-to-action'     => 'titre accrocheur, description courte et texte de bouton',
-        'animated-headline'  => 'texte avant et texte surligné percutants',
-        'flip-box'           => 'titres et descriptions pour les deux faces',
-        'price-table'        => 'titre de plan, sous-titre, période et texte de bouton',
-        'blockquote'         => 'citation percutante et pertinente',
+        // Elementor Free
+        'heading'               => 'titre court et percutant, 5-8 mots max',
+        'text-editor'           => 'un ou plusieurs paragraphes en HTML valide (<p>, <strong>, <em>)',
+        'button'                => 'texte de bouton, appel à l\'action court (2-5 mots)',
+        'icon-box'              => 'titre court + description en HTML',
+        'image-box'             => 'titre court + description en HTML',
+        'testimonial'           => 'témoignage client réaliste avec nom et poste',
+        'counter'               => 'intitulé court de compteur',
+        'progress'              => 'intitulé de compétence ou progression',
+        'alert'                 => 'titre d\'alerte et description concise',
+        'star-rating'           => 'intitulé court pour la note',
+        // Elementor Pro (champs directs)
+        'call-to-action'        => 'titre accrocheur, description courte et texte de bouton',
+        'animated-headline'     => 'texte avant et texte surligné percutants',
+        'flip-box'              => 'titres et descriptions pour les deux faces',
+        'price-table'           => 'titre de plan, sous-titre, période et texte de bouton',
+        'blockquote'            => 'citation percutante et pertinente',
+        // Elementor Pro (repeaters — champs en notation pointée repKey.index.field)
+        'testimonial-carousel'  => 'carrousel de témoignages clients (nom, poste, avis) — chaque item en notation slides.N.champ',
+        'reviews'               => 'avis clients avec nom, poste et contenu — chaque item en notation slides.N.champ',
+        'slides'                => 'diapositives avec titre, description et bouton — chaque item en notation slides.N.champ',
+        'price-list'            => 'liste de prix avec titre, description et prix — chaque item en notation price_list.N.champ',
     );
 
     /**
@@ -123,6 +130,7 @@ class AICF_API_Handler {
         $system .= "  * Citations (blockquote_content) : citation pertinente et percutante.\n";
         $system .= "  * Sous-titres (sub_heading) : phrase d'accroche courte.\n";
         $system .= "  * Périodes (period) : durée courte (ex: '/mois', '/an').\n";
+        $system .= "- Pour les widgets à items multiples (carrousels, listes), les champs utilisent la notation pointée : repKey.index.field (ex: slides.0.content, slides.1.name). Reproduis exactement ces clés dans ta réponse.\n";
         $system .= "- Respecte exactement les IDs des widgets et les clés des champs fournis dans ta réponse.\n";
         $system .= "- Réponds UNIQUEMENT avec un objet JSON valide, sans texte avant ni après.\n";
         $system .= "- Format de réponse obligatoire : {\"widgets\": [{\"id\": \"ID_DU_WIDGET\", \"content\": {\"clé_du_champ\": \"CONTENU_GENERE\", ...}}, ...]}\n";
