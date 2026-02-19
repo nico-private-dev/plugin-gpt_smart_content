@@ -49,11 +49,17 @@ class AICF_Settings {
         return self::$instance;
     }
 
+    /** Liste des fournisseurs supportés */
+    const PROVIDERS = array( 'anthropic', 'openai', 'deepseek' );
+
     private function __construct() {
         add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
         add_action( 'admin_init', array( $this, 'register_settings' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
         add_action( 'wp_ajax_aicf_test_api', array( $this, 'ajax_test_api' ) );
+
+        // Migration : ancienne clé unique → clé par fournisseur
+        self::maybe_migrate_api_key();
     }
 
     /**
@@ -99,11 +105,6 @@ class AICF_Settings {
             'mediaTitle'        => __( 'Choisir le fichier de brief', 'ai-content-filler' ),
             'mediaButton'       => __( 'Utiliser ce fichier', 'ai-content-filler' ),
             'currentAttachment' => self::get_brief_attachment_info(),
-            'apiKeyHints'       => array(
-                'anthropic' => __( 'Commence par sk-ant-... — Disponible sur console.anthropic.com', 'ai-content-filler' ),
-                'openai'    => __( 'Commence par sk-... — Disponible sur platform.openai.com', 'ai-content-filler' ),
-                'deepseek'  => __( 'Disponible sur platform.deepseek.com', 'ai-content-filler' ),
-            ),
             'i18n' => array(
                 'testing'       => __( 'Test en cours…', 'ai-content-filler' ),
                 'testButton'    => __( 'Tester la connexion', 'ai-content-filler' ),
@@ -141,14 +142,16 @@ class AICF_Settings {
             'aicf_api_section'
         );
 
-        // Clé API
-        register_setting( self::OPTION_GROUP, self::OPTION_PREFIX . 'api_key', array(
-            'type'              => 'string',
-            'sanitize_callback' => 'sanitize_text_field',
-            'default'           => '',
-        ) );
+        // Clés API — une par fournisseur
+        foreach ( self::PROVIDERS as $provider ) {
+            register_setting( self::OPTION_GROUP, self::OPTION_PREFIX . 'api_key_' . $provider, array(
+                'type'              => 'string',
+                'sanitize_callback' => 'sanitize_text_field',
+                'default'           => '',
+            ) );
+        }
         add_settings_field(
-            self::OPTION_PREFIX . 'api_key',
+            self::OPTION_PREFIX . 'api_keys',
             __( 'Clé API', 'ai-content-filler' ),
             array( $this, 'render_api_key_field' ),
             self::PAGE_SLUG,
@@ -305,39 +308,46 @@ class AICF_Settings {
     }
 
     public function render_api_key_field() {
-        $value    = get_option( self::OPTION_PREFIX . 'api_key', '' );
-        $provider = self::get_provider();
-        $hints    = array(
+        $current_provider = self::get_provider();
+        $hints            = array(
             'anthropic' => __( 'Commence par sk-ant-... — Disponible sur console.anthropic.com', 'ai-content-filler' ),
             'openai'    => __( 'Commence par sk-... — Disponible sur platform.openai.com', 'ai-content-filler' ),
             'deepseek'  => __( 'Disponible sur platform.deepseek.com', 'ai-content-filler' ),
         );
-        $hint = isset( $hints[ $provider ] ) ? $hints[ $provider ] : '';
+
+        // Un champ input par fournisseur, seul celui du provider actif est visible
+        foreach ( self::PROVIDERS as $provider ) :
+            $option_name = self::OPTION_PREFIX . 'api_key_' . $provider;
+            $value       = get_option( $option_name, '' );
+            $is_active   = ( $current_provider === $provider );
+            $hint        = isset( $hints[ $provider ] ) ? $hints[ $provider ] : '';
         ?>
-        <div class="aicf-api-key-wrap">
-            <input
-                type="password"
-                id="<?php echo esc_attr( self::OPTION_PREFIX . 'api_key' ); ?>"
-                name="<?php echo esc_attr( self::OPTION_PREFIX . 'api_key' ); ?>"
-                value="<?php echo esc_attr( $value ); ?>"
-                class="regular-text aicf-api-key-input"
-                autocomplete="off"
-            />
-            <button
-                type="button"
-                class="button aicf-toggle-key"
-                data-target="<?php echo esc_attr( self::OPTION_PREFIX . 'api_key' ); ?>"
-                title="<?php esc_attr_e( 'Afficher / masquer', 'ai-content-filler' ); ?>"
-            >
-                <span class="dashicons dashicons-visibility"></span>
-            </button>
-            <button type="button" class="button aicf-test-api" id="aicf-test-api-btn">
-                <?php esc_html_e( 'Tester la connexion', 'ai-content-filler' ); ?>
-            </button>
-            <span class="aicf-test-result" id="aicf-test-result"></span>
+        <div class="aicf-api-key-row" data-provider="<?php echo esc_attr( $provider ); ?>" <?php echo $is_active ? '' : 'style="display:none;"'; ?>>
+            <div class="aicf-api-key-wrap">
+                <input
+                    type="password"
+                    id="<?php echo esc_attr( $option_name ); ?>"
+                    name="<?php echo esc_attr( $option_name ); ?>"
+                    value="<?php echo esc_attr( $value ); ?>"
+                    class="regular-text aicf-api-key-input"
+                    autocomplete="off"
+                />
+                <button
+                    type="button"
+                    class="button aicf-toggle-key"
+                    data-target="<?php echo esc_attr( $option_name ); ?>"
+                    title="<?php esc_attr_e( 'Afficher / masquer', 'ai-content-filler' ); ?>"
+                >
+                    <span class="dashicons dashicons-visibility"></span>
+                </button>
+                <button type="button" class="button aicf-test-api aicf-test-api-btn">
+                    <?php esc_html_e( 'Tester la connexion', 'ai-content-filler' ); ?>
+                </button>
+                <span class="aicf-test-result"></span>
+            </div>
+            <p class="description aicf-api-key-hint"><?php echo esc_html( $hint ); ?></p>
         </div>
-        <p class="description" id="aicf-api-key-hint"><?php echo esc_html( $hint ); ?></p>
-        <?php
+        <?php endforeach;
     }
 
     public function render_model_field() {
@@ -514,9 +524,16 @@ class AICF_Settings {
                 </div>
             </div>
 
-            <?php if ( empty( $api_key ) ) : ?>
+            <?php if ( empty( $api_key ) ) :
+                $provider_labels = array( 'anthropic' => 'Anthropic Claude', 'openai' => 'OpenAI', 'deepseek' => 'DeepSeek' );
+                $current_label   = isset( $provider_labels[ self::get_provider() ] ) ? $provider_labels[ self::get_provider() ] : self::get_provider();
+            ?>
             <div class="aicf-notice aicf-notice-warning">
-                ⚠️ <?php esc_html_e( 'Aucune clé API configurée. Le plugin ne pourra pas générer de contenu.', 'ai-content-filler' ); ?>
+                <?php printf(
+                    /* translators: %s: provider name (e.g. "Anthropic Claude") */
+                    esc_html__( 'Aucune clé API configurée pour %s. Le plugin ne pourra pas générer de contenu.', 'ai-content-filler' ),
+                    '<strong>' . esc_html( $current_label ) . '</strong>'
+                ); ?>
             </div>
             <?php endif; ?>
 
@@ -579,7 +596,8 @@ class AICF_Settings {
     }
 
     public static function get_api_key() {
-        return get_option( self::OPTION_PREFIX . 'api_key', '' );
+        $provider = self::get_provider();
+        return get_option( self::OPTION_PREFIX . 'api_key_' . $provider, '' );
     }
 
     public static function get_client_brief() {
@@ -646,6 +664,22 @@ class AICF_Settings {
             return self::extract_pdf_text( $info['path'] );
         }
         return '';
+    }
+
+    /**
+     * Migre l'ancienne clé API unique (aicf_api_key) vers le format par fournisseur.
+     * Exécuté une seule fois : copie la valeur vers aicf_api_key_anthropic (l'ancien défaut)
+     * puis supprime l'option obsolète.
+     */
+    private static function maybe_migrate_api_key() {
+        $old_key = get_option( self::OPTION_PREFIX . 'api_key', '' );
+        if ( ! empty( $old_key ) ) {
+            $anthropic_key = get_option( self::OPTION_PREFIX . 'api_key_anthropic', '' );
+            if ( empty( $anthropic_key ) ) {
+                update_option( self::OPTION_PREFIX . 'api_key_anthropic', $old_key );
+            }
+            delete_option( self::OPTION_PREFIX . 'api_key' );
+        }
     }
 
     /**

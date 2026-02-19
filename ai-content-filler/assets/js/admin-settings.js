@@ -10,9 +10,8 @@
 ( function ( $ ) {
     'use strict';
 
-    var models      = aicfAdmin.models;
-    var apiKeyHints = aicfAdmin.apiKeyHints;
-    var i18n        = aicfAdmin.i18n;
+    var models     = aicfAdmin.models;
+    var i18n       = aicfAdmin.i18n;
     var mediaFrame;
 
     // =========================================================================
@@ -35,9 +34,12 @@
             select.append( $( '<option>', { value: id, text: label } ) );
         } );
 
-        // Mettre à jour le hint de la clé API
-        var hint = apiKeyHints[ provider ] || '';
-        $( '#aicf-api-key-hint' ).text( hint );
+        // Afficher le champ clé API du fournisseur sélectionné, masquer les autres
+        $( '.aicf-api-key-row' ).hide();
+        $( '.aicf-api-key-row[data-provider="' + provider + '"]' ).show();
+
+        // Réinitialiser le résultat du test quand on change de provider
+        $( '.aicf-test-result' ).text( '' ).attr( 'class', 'aicf-test-result' );
     } );
 
     // =========================================================================
@@ -62,11 +64,12 @@
     // 3. Bouton "Tester la connexion"
     // =========================================================================
 
-    $( document ).on( 'click', '#aicf-test-api-btn', function () {
+    $( document ).on( 'click', '.aicf-test-api-btn', function () {
         var btn      = $( this );
-        var resultEl = $( '#aicf-test-result' );
-        var provider = $( 'input[name="aicf_provider"]:checked' ).val() || 'anthropic';
-        var apiKey   = $( '#aicf_api_key' ).val();
+        var row      = btn.closest( '.aicf-api-key-row' );
+        var resultEl = row.find( '.aicf-test-result' );
+        var provider = row.data( 'provider' );
+        var apiKey   = row.find( '.aicf-api-key-input' ).val();
         var model    = $( '#aicf_model' ).val();
 
         btn.prop( 'disabled', true ).text( i18n.testing );
