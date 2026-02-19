@@ -27,7 +27,7 @@ class AICF_Settings {
         'anthropic' => array(
             'claude-sonnet-4-5-20250929' => 'Claude Sonnet 4.5 (recommandé)',
             'claude-sonnet-4-20250514'   => 'Claude Sonnet 4',
-            'claude-haiku-4-20250414'    => 'Claude Haiku 4 (rapide, économique)',
+            'claude-haiku-4-5-20251001'    => 'Claude Haiku 4 (rapide, économique)',
             'claude-opus-4-6'            => 'Claude Opus 4.6 (le plus puissant)',
         ),
         'openai' => array(
