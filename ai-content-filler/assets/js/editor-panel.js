@@ -117,6 +117,26 @@
             repeaters: {
                 'price_list': { fields: { 'title': 'Titre', 'item_description': 'Description', 'price': 'Prix' } }
             }
+        },
+
+        // --- Elementor Free (widgets avec repeaters) ---
+        'accordion': {
+            label: 'Accordéon', cssClass: 'text',
+            repeaters: {
+                'tabs': { fields: { 'tab_title': 'Titre', 'tab_content': 'Contenu' } }
+            }
+        },
+        'toggle': {
+            label: 'Toggle', cssClass: 'text',
+            repeaters: {
+                'tabs': { fields: { 'tab_title': 'Titre', 'tab_content': 'Contenu' } }
+            }
+        },
+        'tabs': {
+            label: 'Onglets', cssClass: 'text',
+            repeaters: {
+                'tabs': { fields: { 'tab_title': 'Titre', 'tab_content': 'Contenu' } }
+            }
         }
     };
 
