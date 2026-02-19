@@ -1,0 +1,331 @@
+/* ============================================================
+   AI Content Filler — Admin Settings Styles
+   ============================================================ */
+
+/* ------ Layout ------ */
+.aicf-settings-wrap {
+    max-width: 860px;
+    margin-top: 20px;
+}
+
+/* ------ Header ------ */
+.aicf-settings-header {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 24px 28px;
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    border-radius: 10px;
+    color: #fff;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 20px rgba(79, 70, 229, 0.3);
+}
+
+.aicf-header-icon {
+    font-size: 44px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.aicf-header-title {
+    margin: 0 !important;
+    font-size: 22px !important;
+    font-weight: 700 !important;
+    color: #fff !important;
+    line-height: 1.2;
+}
+
+.aicf-header-subtitle {
+    margin: 5px 0 0;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 13px;
+}
+
+/* ------ Notice personnalisée (en dessous du header WP) ------ */
+.aicf-notice {
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.aicf-notice-warning {
+    background: #fffbeb;
+    border-left: 4px solid #f59e0b;
+    color: #92400e;
+}
+
+/* ------ Cards de section ------ */
+.aicf-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+}
+
+.aicf-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.aicf-card-icon {
+    font-size: 20px;
+    line-height: 1;
+}
+
+.aicf-card-header h2 {
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    color: #1e293b !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: none !important;
+}
+
+.aicf-card-body {
+    padding: 4px 0;
+}
+
+.aicf-section-desc {
+    margin: 12px 20px 0;
+    font-size: 13px;
+    color: #64748b;
+}
+
+/* ------ Override des styles de form-table dans nos cards ------ */
+.aicf-card .form-table {
+    margin: 0;
+    border: none;
+    box-shadow: none;
+}
+
+.aicf-card .form-table th {
+    padding: 16px 20px;
+    font-weight: 600;
+    color: #374151;
+    width: 220px;
+    font-size: 13px;
+}
+
+.aicf-card .form-table td {
+    padding: 16px 20px;
+}
+
+.aicf-card .form-table tr:not(:last-child) th,
+.aicf-card .form-table tr:not(:last-child) td {
+    border-bottom: 1px solid #f1f5f9;
+}
+
+/* ------ Grille de sélection de fournisseur ------ */
+.aicf-provider-grid {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.aicf-provider-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    padding: 14px 18px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    cursor: pointer;
+    min-width: 130px;
+    text-align: center;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    background: #f9fafb;
+    position: relative;
+}
+
+.aicf-provider-card:hover {
+    border-color: #818cf8;
+    background: #eef2ff;
+}
+
+.aicf-provider-card.active {
+    border-color: #4f46e5;
+    background: #eef2ff;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+}
+
+.aicf-provider-card input[type="radio"] {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    margin: 0;
+    accent-color: #4f46e5;
+}
+
+.aicf-provider-icon {
+    font-size: 28px;
+    line-height: 1;
+}
+
+.aicf-provider-name {
+    font-weight: 600;
+    font-size: 12px;
+    color: #1f2937;
+    line-height: 1.3;
+}
+
+.aicf-provider-desc {
+    font-size: 11px;
+    color: #6b7280;
+    line-height: 1.3;
+}
+
+/* ------ Champ clé API ------ */
+.aicf-api-key-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.aicf-api-key-input {
+    font-family: monospace !important;
+    font-size: 13px !important;
+}
+
+.aicf-toggle-key {
+    padding: 4px 8px !important;
+    min-width: 34px !important;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.aicf-toggle-key .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 1;
+}
+
+.aicf-test-api {
+    white-space: nowrap !important;
+}
+
+/* ------ Résultat du test API ------ */
+.aicf-test-result {
+    display: inline-block;
+    font-size: 13px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.aicf-test-result:empty {
+    display: none;
+}
+
+.aicf-test-success {
+    color: #065f46;
+    background: #d1fae5;
+    border: 1px solid #6ee7b7;
+}
+
+.aicf-test-error {
+    color: #991b1b;
+    background: #fee2e2;
+    border: 1px solid #fca5a5;
+}
+
+/* ------ Zone d'upload de fichier ------ */
+.aicf-file-upload-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.aicf-file-preview {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.aicf-file-icon {
+    font-size: 18px;
+    line-height: 1;
+}
+
+.aicf-file-name {
+    font-weight: 500;
+    color: #065f46;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.aicf-file-type {
+    font-size: 10px;
+    background: #d1fae5;
+    color: #065f46;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.aicf-remove-file {
+    background: none !important;
+    border: none !important;
+    cursor: pointer;
+    color: #9ca3af;
+    font-size: 14px;
+    padding: 0 2px !important;
+    line-height: 1;
+    box-shadow: none !important;
+}
+
+.aicf-remove-file:hover {
+    color: #dc2626;
+}
+
+.aicf-select-file {
+    white-space: nowrap !important;
+}
+
+/* ------ Bouton de soumission ------ */
+.aicf-settings-wrap .submit {
+    padding: 0;
+    margin-top: 4px;
+}
+
+.aicf-settings-wrap .submit input[type="submit"] {
+    background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
+    border: none !important;
+    color: #fff !important;
+    padding: 10px 28px !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3) !important;
+    transition: opacity 0.15s;
+    height: auto !important;
+}
+
+.aicf-settings-wrap .submit input[type="submit"]:hover {
+    opacity: 0.9;
+}

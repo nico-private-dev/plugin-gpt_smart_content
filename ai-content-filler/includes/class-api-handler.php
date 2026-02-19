@@ -1,6 +1,6 @@
 <?php
 /**
- * Communication avec l'API Anthropic Claude.
+ * Communication avec les APIs IA (Anthropic Claude, OpenAI, DeepSeek).
  * Construit les prompts, envoie la requête et parse la réponse JSON.
  */
 
@@ -11,7 +11,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 class AICF_API_Handler {
 
     /** URL de l'API Messages d'Anthropic */
-    const API_URL = 'https://api.anthropic.com/v1/messages';
+    const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
+
+    /** URL de l'API Chat Completions d'OpenAI */
+    const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+
+    /** URL de l'API DeepSeek (format OpenAI-compatible) */
+    const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
 
     /** Version de l'API Anthropic */
     const API_VERSION = '2023-06-01';
@@ -21,6 +27,18 @@ class AICF_API_Handler {
 
     /** Tokens minimum par widget pour éviter la troncature */
     const TOKENS_PER_WIDGET = 400;
+
+    /** Noms de langues pour le system prompt */
+    private static $language_names = array(
+        'fr' => 'français',
+        'en' => 'anglais (English)',
+        'es' => 'espagnol (español)',
+        'de' => 'allemand (Deutsch)',
+        'it' => 'italien (italiano)',
+        'pt' => 'portugais (português)',
+        'nl' => 'néerlandais (Nederlands)',
+        'ar' => 'arabe (العربية)',
+    );
 
     /**
      * Registre des types de widgets supportés côté serveur.
@@ -52,7 +70,7 @@ class AICF_API_Handler {
     );
 
     /**
-     * Génère le contenu pour une liste de widgets via l'API Claude.
+     * Génère le contenu pour une liste de widgets via l'API IA configurée.
      *
      * @param string $user_prompt  Le prompt saisi par l'utilisateur dans l'éditeur.
      * @param array  $widgets      Tableau de widgets [ { id, type, fields } ].
@@ -75,7 +93,7 @@ class AICF_API_Handler {
         $widget_count  = count( $widgets );
 
         // Premier essai
-        $result = $this->call_claude_api( $api_key, $system_prompt, $user_message, $widget_count );
+        $result = $this->call_api( $system_prompt, $user_message, $widget_count );
 
         if ( is_wp_error( $result ) ) {
             return $result;
@@ -91,7 +109,7 @@ class AICF_API_Handler {
                 . "Start your response with { and end with }. "
                 . "Exact format: {\"widgets\": [{\"id\": \"WIDGET_ID\", \"content\": {\"field_key\": \"CONTENT\", ...}}, ...]}";
 
-            $result = $this->call_claude_api( $api_key, $system_prompt, $strict_message, $widget_count );
+            $result = $this->call_api( $system_prompt, $strict_message, $widget_count );
 
             if ( is_wp_error( $result ) ) {
                 return $result;
@@ -108,15 +126,22 @@ class AICF_API_Handler {
     }
 
     /**
-     * Construit le system prompt à partir du brief client enregistré dans les réglages.
+     * Construit le system prompt à partir du brief client et des réglages.
      */
     private function build_system_prompt() {
-        $brief = AICF_Settings::get_client_brief();
+        $brief      = AICF_Settings::get_client_brief();
+        $file_brief = AICF_Settings::extract_brief_file_content();
+        $lang_code  = AICF_Settings::get_language();
+        $lang_name  = isset( self::$language_names[ $lang_code ] ) ? self::$language_names[ $lang_code ] : 'français';
 
         $system = "Tu es un rédacteur web professionnel. Tu rédiges du contenu pour des sites web créés avec WordPress et Elementor.\n\n";
 
         if ( ! empty( $brief ) ) {
             $system .= "BRIEF CLIENT :\n" . $brief . "\n\n";
+        }
+
+        if ( ! empty( $file_brief ) ) {
+            $system .= "BRIEF CLIENT (document importé) :\n" . $file_brief . "\n\n";
         }
 
         $system .= "RÈGLES DE RÉDACTION :\n";
@@ -135,7 +160,7 @@ class AICF_API_Handler {
         $system .= "- Réponds UNIQUEMENT avec un objet JSON valide, sans texte avant ni après.\n";
         $system .= "- Format de réponse obligatoire : {\"widgets\": [{\"id\": \"ID_DU_WIDGET\", \"content\": {\"clé_du_champ\": \"CONTENU_GENERE\", ...}}, ...]}\n";
         $system .= "- N'invente pas de widgets ni de champs supplémentaires, traite uniquement ceux fournis.\n";
-        $system .= "- Rédige en français sauf si le prompt de l'utilisateur indique une autre langue.\n";
+        $system .= "- Rédige en " . $lang_name . " sauf si le prompt de l'utilisateur indique explicitement une autre langue.\n";
 
         return $system;
     }
@@ -181,19 +206,56 @@ class AICF_API_Handler {
     }
 
     /**
-     * Effectue l'appel HTTP vers l'API Claude.
+     * Dispatche l'appel API vers le bon fournisseur selon les réglages.
+     *
+     * @param string $system_prompt  System prompt.
+     * @param string $user_message   Message utilisateur.
+     * @param int    $widget_count   Nombre de widgets.
+     * @return string|WP_Error       Texte brut retourné par l'IA, ou WP_Error.
+     */
+    private function call_api( $system_prompt, $user_message, $widget_count = 1 ) {
+        $provider = AICF_Settings::get_provider();
+        $api_key  = AICF_Settings::get_api_key();
+
+        switch ( $provider ) {
+            case 'openai':
+                return $this->call_openai_compatible_api(
+                    $api_key,
+                    self::OPENAI_API_URL,
+                    $system_prompt,
+                    $user_message,
+                    $widget_count
+                );
+            case 'deepseek':
+                return $this->call_openai_compatible_api(
+                    $api_key,
+                    self::DEEPSEEK_API_URL,
+                    $system_prompt,
+                    $user_message,
+                    $widget_count
+                );
+            case 'anthropic':
+            default:
+                return $this->call_anthropic_api(
+                    $api_key,
+                    $system_prompt,
+                    $user_message,
+                    $widget_count
+                );
+        }
+    }
+
+    /**
+     * Effectue l'appel HTTP vers l'API Anthropic (Claude).
      *
      * @param string $api_key        Clé API Anthropic.
      * @param string $system_prompt  System prompt.
      * @param string $user_message   Message utilisateur.
-     * @param int    $widget_count   Nombre de widgets (pour calculer les tokens nécessaires).
-     * @return string|WP_Error       Texte de la réponse de Claude, ou WP_Error.
+     * @param int    $widget_count   Nombre de widgets.
+     * @return string|WP_Error       Texte de la réponse, ou WP_Error.
      */
-    private function call_claude_api( $api_key, $system_prompt, $user_message, $widget_count = 1 ) {
-        $configured_tokens = AICF_Settings::get_max_tokens();
-        $needed_tokens     = max( $configured_tokens, $widget_count * self::TOKENS_PER_WIDGET );
-        // Plafonner à 8192 pour éviter les abus tout en supportant les pages complexes
-        $max_tokens = min( $needed_tokens, 8192 );
+    private function call_anthropic_api( $api_key, $system_prompt, $user_message, $widget_count = 1 ) {
+        $max_tokens = $this->compute_max_tokens( $widget_count );
 
         $body = array(
             'model'       => AICF_Settings::get_model(),
@@ -208,7 +270,7 @@ class AICF_API_Handler {
             ),
         );
 
-        $response = wp_remote_post( self::API_URL, array(
+        $response = wp_remote_post( self::ANTHROPIC_API_URL, array(
             'timeout' => self::TIMEOUT,
             'headers' => array(
                 'Content-Type'      => 'application/json',
@@ -221,7 +283,7 @@ class AICF_API_Handler {
         if ( is_wp_error( $response ) ) {
             return new WP_Error(
                 'aicf_api_request_failed',
-                __( 'Erreur de connexion à l\'API Claude : ', 'ai-content-filler' ) . $response->get_error_message(),
+                __( 'Erreur de connexion à l\'API : ', 'ai-content-filler' ) . $response->get_error_message(),
                 array( 'status' => 502 )
             );
         }
@@ -233,11 +295,11 @@ class AICF_API_Handler {
             $error_data = json_decode( $body_raw, true );
             $error_msg  = isset( $error_data['error']['message'] )
                 ? $error_data['error']['message']
-                : __( 'Erreur inconnue de l\'API Claude.', 'ai-content-filler' );
+                : __( 'Erreur inconnue de l\'API.', 'ai-content-filler' );
 
             return new WP_Error(
                 'aicf_api_error',
-                sprintf( __( 'API Claude (HTTP %d) : %s', 'ai-content-filler' ), $status_code, $error_msg ),
+                sprintf( __( 'API Anthropic (HTTP %d) : %s', 'ai-content-filler' ), $status_code, $error_msg ),
                 array( 'status' => $status_code )
             );
         }
@@ -247,16 +309,15 @@ class AICF_API_Handler {
         if ( ! isset( $data['content'][0]['text'] ) ) {
             return new WP_Error(
                 'aicf_api_empty_response',
-                __( 'La réponse de Claude est vide ou dans un format inattendu.', 'ai-content-filler' ),
+                __( 'La réponse de l\'API est vide ou dans un format inattendu.', 'ai-content-filler' ),
                 array( 'status' => 500 )
             );
         }
 
-        $stop_reason = isset( $data['stop_reason'] ) ? $data['stop_reason'] : '';
-        if ( $stop_reason === 'max_tokens' ) {
+        if ( isset( $data['stop_reason'] ) && 'max_tokens' === $data['stop_reason'] ) {
             return new WP_Error(
                 'aicf_response_truncated',
-                __( 'La réponse de Claude a été tronquée (trop de contenu pour le nombre de tokens alloué). Essayez avec moins de widgets ou augmentez la limite de tokens dans les réglages.', 'ai-content-filler' ),
+                __( 'La réponse a été tronquée (trop de contenu pour le nombre de tokens alloué). Essayez avec moins de widgets ou augmentez la limite de tokens dans les réglages.', 'ai-content-filler' ),
                 array( 'status' => 500 )
             );
         }
@@ -265,10 +326,208 @@ class AICF_API_Handler {
     }
 
     /**
-     * Parse la réponse texte de Claude pour en extraire le JSON des widgets.
+     * Effectue l'appel HTTP vers une API compatible OpenAI (OpenAI ou DeepSeek).
+     *
+     * @param string $api_key       Clé API.
+     * @param string $api_url       URL de l'endpoint.
+     * @param string $system_prompt System prompt.
+     * @param string $user_message  Message utilisateur.
+     * @param int    $widget_count  Nombre de widgets.
+     * @return string|WP_Error      Texte de la réponse, ou WP_Error.
+     */
+    private function call_openai_compatible_api( $api_key, $api_url, $system_prompt, $user_message, $widget_count = 1 ) {
+        $max_tokens = $this->compute_max_tokens( $widget_count );
+
+        $body = array(
+            'model'       => AICF_Settings::get_model(),
+            'max_tokens'  => $max_tokens,
+            'temperature' => AICF_Settings::get_temperature(),
+            'messages'    => array(
+                array(
+                    'role'    => 'system',
+                    'content' => $system_prompt,
+                ),
+                array(
+                    'role'    => 'user',
+                    'content' => $user_message,
+                ),
+            ),
+        );
+
+        $response = wp_remote_post( $api_url, array(
+            'timeout' => self::TIMEOUT,
+            'headers' => array(
+                'Content-Type'  => 'application/json',
+                'Authorization' => 'Bearer ' . $api_key,
+            ),
+            'body'    => wp_json_encode( $body ),
+        ) );
+
+        if ( is_wp_error( $response ) ) {
+            return new WP_Error(
+                'aicf_api_request_failed',
+                __( 'Erreur de connexion à l\'API : ', 'ai-content-filler' ) . $response->get_error_message(),
+                array( 'status' => 502 )
+            );
+        }
+
+        $status_code = wp_remote_retrieve_response_code( $response );
+        $body_raw    = wp_remote_retrieve_body( $response );
+
+        if ( $status_code < 200 || $status_code >= 300 ) {
+            $error_data = json_decode( $body_raw, true );
+            $error_msg  = isset( $error_data['error']['message'] )
+                ? $error_data['error']['message']
+                : __( 'Erreur inconnue de l\'API.', 'ai-content-filler' );
+
+            return new WP_Error(
+                'aicf_api_error',
+                sprintf( __( 'API (HTTP %d) : %s', 'ai-content-filler' ), $status_code, $error_msg ),
+                array( 'status' => $status_code )
+            );
+        }
+
+        $data = json_decode( $body_raw, true );
+
+        if ( ! isset( $data['choices'][0]['message']['content'] ) ) {
+            return new WP_Error(
+                'aicf_api_empty_response',
+                __( 'La réponse de l\'API est vide ou dans un format inattendu.', 'ai-content-filler' ),
+                array( 'status' => 500 )
+            );
+        }
+
+        if ( isset( $data['choices'][0]['finish_reason'] ) && 'length' === $data['choices'][0]['finish_reason'] ) {
+            return new WP_Error(
+                'aicf_response_truncated',
+                __( 'La réponse a été tronquée (trop de contenu pour le nombre de tokens alloué). Essayez avec moins de widgets ou augmentez la limite de tokens dans les réglages.', 'ai-content-filler' ),
+                array( 'status' => 500 )
+            );
+        }
+
+        return $data['choices'][0]['message']['content'];
+    }
+
+    /**
+     * Calcule le nombre de tokens à allouer pour la réponse.
+     *
+     * @param int $widget_count Nombre de widgets à remplir.
+     * @return int
+     */
+    private function compute_max_tokens( $widget_count ) {
+        $configured = AICF_Settings::get_max_tokens();
+        $needed     = max( $configured, $widget_count * self::TOKENS_PER_WIDGET );
+        return min( $needed, 8192 );
+    }
+
+    /**
+     * Teste la connexion à l'API avec les identifiants fournis.
+     * Méthode statique appelée depuis la page de réglages (AJAX).
+     *
+     * @param string $provider Fournisseur ('anthropic', 'openai', 'deepseek').
+     * @param string $api_key  Clé API à tester.
+     * @param string $model    Modèle à utiliser pour le test.
+     * @return true|WP_Error
+     */
+    public static function test_connection( $provider, $api_key, $model ) {
+        switch ( $provider ) {
+            case 'openai':
+                return self::test_openai_compatible( $api_key, $model, self::OPENAI_API_URL );
+            case 'deepseek':
+                return self::test_openai_compatible( $api_key, $model, self::DEEPSEEK_API_URL );
+            case 'anthropic':
+            default:
+                return self::test_anthropic( $api_key, $model );
+        }
+    }
+
+    /**
+     * Test de connexion Anthropic : envoie un message minimal avec max_tokens=10.
+     */
+    private static function test_anthropic( $api_key, $model ) {
+        $body = array(
+            'model'      => $model ?: 'claude-haiku-4-20250414',
+            'max_tokens' => 10,
+            'messages'   => array(
+                array( 'role' => 'user', 'content' => 'Hi' ),
+            ),
+        );
+
+        $response = wp_remote_post( self::ANTHROPIC_API_URL, array(
+            'timeout' => 15,
+            'headers' => array(
+                'Content-Type'      => 'application/json',
+                'x-api-key'         => $api_key,
+                'anthropic-version' => self::API_VERSION,
+            ),
+            'body'    => wp_json_encode( $body ),
+        ) );
+
+        return self::check_test_response( $response, 'Anthropic' );
+    }
+
+    /**
+     * Test de connexion compatible OpenAI (OpenAI ou DeepSeek) : envoie un message minimal.
+     */
+    private static function test_openai_compatible( $api_key, $model, $api_url ) {
+        $body = array(
+            'model'      => $model ?: 'gpt-4o-mini',
+            'max_tokens' => 10,
+            'messages'   => array(
+                array( 'role' => 'user', 'content' => 'Hi' ),
+            ),
+        );
+
+        $response = wp_remote_post( $api_url, array(
+            'timeout' => 15,
+            'headers' => array(
+                'Content-Type'  => 'application/json',
+                'Authorization' => 'Bearer ' . $api_key,
+            ),
+            'body'    => wp_json_encode( $body ),
+        ) );
+
+        return self::check_test_response( $response, 'API' );
+    }
+
+    /**
+     * Vérifie la réponse HTTP d'un test de connexion.
+     *
+     * @param array|WP_Error $response    Réponse HTTP.
+     * @param string         $api_label   Nom de l'API pour les messages d'erreur.
+     * @return true|WP_Error
+     */
+    private static function check_test_response( $response, $api_label ) {
+        if ( is_wp_error( $response ) ) {
+            return new WP_Error(
+                'aicf_test_failed',
+                __( 'Impossible de joindre l\'API : ', 'ai-content-filler' ) . $response->get_error_message()
+            );
+        }
+
+        $status_code = wp_remote_retrieve_response_code( $response );
+
+        if ( $status_code >= 200 && $status_code < 300 ) {
+            return true;
+        }
+
+        $body_raw   = wp_remote_retrieve_body( $response );
+        $error_data = json_decode( $body_raw, true );
+        $error_msg  = isset( $error_data['error']['message'] )
+            ? $error_data['error']['message']
+            : __( 'Clé API invalide ou non autorisée.', 'ai-content-filler' );
+
+        return new WP_Error(
+            'aicf_test_failed',
+            sprintf( '%s (HTTP %d) : %s', $api_label, $status_code, $error_msg )
+        );
+    }
+
+    /**
+     * Parse la réponse texte de l'IA pour en extraire le JSON des widgets.
      * Plusieurs stratégies d'extraction pour gérer tous les formats possibles.
      *
-     * @param string $raw_text  Texte brut retourné par Claude.
+     * @param string $raw_text  Texte brut retourné par l'IA.
      * @return array|WP_Error   Tableau [ { id, content } ] ou WP_Error.
      */
     private function parse_response( $raw_text ) {
@@ -304,7 +563,7 @@ class AICF_API_Handler {
         return new WP_Error(
             'aicf_invalid_json',
             sprintf(
-                __( 'Impossible d\'extraire un JSON valide de la réponse de Claude. Début de la réponse : "%s"', 'ai-content-filler' ),
+                __( 'Impossible d\'extraire un JSON valide de la réponse de l\'IA. Début de la réponse : "%s"', 'ai-content-filler' ),
                 $preview
             ),
             array( 'status' => 500 )
