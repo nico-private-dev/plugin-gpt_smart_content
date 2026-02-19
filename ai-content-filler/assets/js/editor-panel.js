@@ -221,7 +221,27 @@
     function findContainerById(container, targetId) {
         if (!container) return null;
         if (container.model && container.model.get('id') === targetId) return container;
-        var children = container.children;
+
+        // Utilise la même logique de traversée que scanWidgets pour garantir
+        // qu'on retrouve tous les widgets, y compris ceux dans des containers
+        // imbriqués où .children n'est pas peuplé.
+        var children = null;
+        if (container.children && container.children.length > 0) {
+            children = container.children;
+        } else if (container.model && container.model.get && container.model.get('elements')) {
+            var elements = container.model.get('elements');
+            if (elements && elements.models) {
+                children = [];
+                elements.models.forEach(function (childModel) {
+                    if (childModel.container) {
+                        children.push(childModel.container);
+                    } else {
+                        children.push({ model: childModel, children: getChildrenFromModel(childModel) });
+                    }
+                });
+            }
+        }
+
         if (!children || !children.length) return null;
         for (var i = 0; i < children.length; i++) {
             var found = findContainerById(children[i], targetId);
