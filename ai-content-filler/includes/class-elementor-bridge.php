@@ -64,6 +64,16 @@ class AICF_Elementor_Bridge {
                         return is_array( $value ) && ! empty( $value );
                     },
                 ),
+                'tone'        => array(
+                    'required'          => false,
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'default'           => '',
+                ),
+                'heading_style' => array(
+                    'required'          => false,
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'default'           => 'none',
+                ),
             ),
         ) );
     }
@@ -142,9 +152,15 @@ class AICF_Elementor_Bridge {
             );
         }
 
-        // --- Appel à l'API Claude ---
+        // --- Options supplémentaires (ton, style titres) ---
+        $options = array(
+            'tone'          => $request->get_param( 'tone' ),
+            'heading_style' => $request->get_param( 'heading_style' ),
+        );
+
+        // --- Appel à l'API IA ---
         $api_handler = new AICF_API_Handler();
-        $result      = $api_handler->generate_content( $user_prompt, $widgets, $page_id );
+        $result      = $api_handler->generate_content( $user_prompt, $widgets, $page_id, $options );
 
         if ( is_wp_error( $result ) ) {
             // Supprimer le rate limit en cas d'erreur pour permettre un retry

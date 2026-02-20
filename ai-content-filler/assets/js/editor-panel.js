@@ -23,6 +23,35 @@
     var cachedRootContainer = null;
     var cachedPageId = 0;
 
+    // Historique du contenu par widget (pour le revert)
+    var widgetHistory = {};
+
+    // ---------------------------------------------------------------
+    // Prompt templates
+    // ---------------------------------------------------------------
+    var PROMPT_TEMPLATES = {
+        landing: {
+            label: 'Landing',
+            prompt: 'Page d\'atterrissage pour [votre offre]. Objectif : convertir les visiteurs en clients. Messages clairs, arguments percutants, appels à l\'action forts.'
+        },
+        service: {
+            label: 'Service',
+            prompt: 'Page de service présentant [vos services]. Mettez en avant les avantages, le processus et les résultats concrets pour le client.'
+        },
+        about: {
+            label: 'À propos',
+            prompt: 'Page à propos de l\'entreprise. Présentez l\'histoire, les valeurs, la mission et l\'équipe. Ton authentique et engageant.'
+        },
+        home: {
+            label: 'Accueil',
+            prompt: 'Page d\'accueil du site. Présentez l\'activité, les services phares et les avantages concurrentiels. Donnez envie d\'explorer le site.'
+        },
+        blog: {
+            label: 'Blog',
+            prompt: 'Article de blog sur [sujet]. Contenu informatif, structuré avec des sous-titres, engageant et optimisé SEO.'
+        }
+    };
+
     // ---------------------------------------------------------------
     // Registre des types de widgets supportés
     // - fields    : champs texte directs
@@ -147,8 +176,6 @@
         },
 
         // --- Elementor nested widgets (3.15+) ---
-        // Les titres sont dans le repeater 'items' du widget parent,
-        // le contenu de chaque panneau est géré par les widgets enfants.
         'nested-accordion': {
             label: 'Accordéon', cssClass: 'text',
             repeaters: {
@@ -171,6 +198,14 @@
         if (panelCreated || document.getElementById('aicf-panel')) return;
         panelCreated = true;
 
+        // Build template buttons
+        var tplButtons = '';
+        for (var tplKey in PROMPT_TEMPLATES) {
+            if (PROMPT_TEMPLATES.hasOwnProperty(tplKey)) {
+                tplButtons += '<button type="button" class="aicf-tpl-btn" data-tpl="' + tplKey + '">' + PROMPT_TEMPLATES[tplKey].label + '</button>';
+            }
+        }
+
         var panelHTML =
             '<div id="aicf-panel">' +
                 '<div id="aicf-panel-header">' +
@@ -178,12 +213,41 @@
                     '<button id="aicf-panel-toggle" type="button" title="Réduire/Agrandir">&#9660;</button>' +
                 '</div>' +
                 '<div id="aicf-panel-body">' +
+                    // Prompt templates
+                    '<div id="aicf-templates" class="aicf-templates">' +
+                        '<span class="aicf-templates-label">Modèles :</span>' +
+                        tplButtons +
+                    '</div>' +
                     '<textarea id="aicf-prompt" placeholder="Décrivez l\'objectif de cette page..." rows="3"></textarea>' +
+                    // Options row (tone + heading style)
+                    '<div id="aicf-options-row" class="aicf-options-row">' +
+                        '<div class="aicf-option-group">' +
+                            '<label for="aicf-tone">Ton</label>' +
+                            '<select id="aicf-tone">' +
+                                '<option value="">Par défaut</option>' +
+                                '<option value="professional">Professionnel</option>' +
+                                '<option value="casual">Décontracté</option>' +
+                                '<option value="commercial">Commercial</option>' +
+                                '<option value="technical">Technique</option>' +
+                            '</select>' +
+                        '</div>' +
+                        '<div class="aicf-option-group">' +
+                            '<label for="aicf-heading-style">Titres</label>' +
+                            '<select id="aicf-heading-style">' +
+                                '<option value="none">Normal</option>' +
+                                '<option value="highlight">Surlignement</option>' +
+                                '<option value="underline">Soulignement</option>' +
+                                '<option value="color">Couleur</option>' +
+                            '</select>' +
+                        '</div>' +
+                    '</div>' +
                     '<div id="aicf-widget-list-container"></div>' +
+                    '<div id="aicf-cost-estimate" class="aicf-cost-estimate" style="display:none;"></div>' +
                     '<button id="aicf-scan-btn" type="button">&#128269; Scanner les widgets</button>' +
                     '<div id="aicf-action-bar" style="display:none;">' +
                         '<button id="aicf-generate-btn" type="button">&#10024; Générer le contenu</button>' +
-                        '<button id="aicf-rescan-btn" type="button" title="Rescanner les widgets">&#128260; Rescanner</button>' +
+                        '<button id="aicf-rescan-btn" type="button" title="Rescanner les widgets">&#128260;</button>' +
+                        '<button id="aicf-back-to-prompt" type="button" title="Retour au prompt">&#9998;</button>' +
                     '</div>' +
                     '<div id="aicf-status" class="aicf-status-idle">' + config.i18n.idle + '</div>' +
                 '</div>' +
@@ -199,6 +263,9 @@
         $(document).on('change', '.aicf-widget-checkbox', onWidgetCheckboxChange);
         $(document).on('click', '#aicf-select-all', onSelectAllToggle);
         $(document).on('click', '#aicf-back-to-prompt', onBackToPrompt);
+        $(document).on('click', '.aicf-tpl-btn', onTemplateClick);
+        $(document).on('click', '.aicf-widget-regen', onRegenerateWidget);
+        $(document).on('click', '.aicf-widget-revert', onRevertWidget);
     }
 
     function onTogglePanel() {
@@ -213,6 +280,21 @@
             .removeClass('aicf-status-idle aicf-status-loading aicf-status-success aicf-status-error')
             .addClass('aicf-status-' + type)
             .text(message);
+    }
+
+    // ---------------------------------------------------------------
+    // Template click handler
+    // ---------------------------------------------------------------
+
+    function onTemplateClick() {
+        var tplKey = $(this).data('tpl');
+        var tpl = PROMPT_TEMPLATES[tplKey];
+        if (tpl) {
+            $('#aicf-prompt').val(tpl.prompt).focus();
+            // Highlight active template
+            $('.aicf-tpl-btn').removeClass('aicf-tpl-active');
+            $(this).addClass('aicf-tpl-active');
+        }
     }
 
     // ---------------------------------------------------------------
@@ -269,9 +351,6 @@
         if (!container) return null;
         if (container.model && container.model.get('id') === targetId) return container;
 
-        // Utilise la même logique de traversée que scanWidgets pour garantir
-        // qu'on retrouve tous les widgets, y compris ceux dans des containers
-        // imbriqués où .children n'est pas peuplé.
         var children = null;
         if (container.children && container.children.length > 0) {
             children = container.children;
@@ -438,13 +517,19 @@
                 if (fc > 1) infoBadge = ' <span class="aicf-wl-field-count">' + fc + ' champs</span>';
             }
 
-            html += '<div class="aicf-wl-item" data-widget-id="' + w.id + '">';
+            var hasHistory = widgetHistory[w.id] ? true : false;
+
+            html += '<div class="aicf-wl-item' + (hasHistory ? ' aicf-wl-item-done' : '') + '" data-widget-id="' + w.id + '">';
             html += '<label class="aicf-wl-checkbox-label"><input type="checkbox" class="aicf-widget-checkbox" data-widget-id="' + w.id + '" checked /><span class="aicf-wl-checkmark"></span></label>';
             html += '<div class="aicf-wl-info">';
             html += '<span class="aicf-wl-type aicf-wl-type-' + cssClass + '">' + typeLabel + infoBadge + '</span>';
             html += '<span class="aicf-wl-preview">' + $('<span>').text(preview).html() + '</span>';
             html += '</div>';
+            html += '<div class="aicf-wl-actions">';
+            html += '<button type="button" class="aicf-widget-regen" data-widget-id="' + w.id + '" title="Régénérer ce widget">&#x21bb;</button>';
+            html += '<button type="button" class="aicf-widget-revert" data-widget-id="' + w.id + '" title="Restaurer le contenu précédent" style="' + (hasHistory ? '' : 'display:none;') + '">&#x21a9;</button>';
             html += '<button type="button" class="aicf-widget-remove" data-widget-id="' + w.id + '" title="Exclure ce widget">&times;</button>';
+            html += '</div>';
             html += '</div>';
         }
         html += '</div></div>';
@@ -468,6 +553,36 @@
         var total = $('.aicf-wl-item').length;
         var selected = getSelectedCount();
         $('.aicf-wl-count').text(selected + '/' + total + ' widget' + (total > 1 ? 's' : '') + ' sélectionné' + (selected > 1 ? 's' : ''));
+    }
+
+    // ---------------------------------------------------------------
+    // Cost estimation
+    // ---------------------------------------------------------------
+
+    function updateCostEstimate() {
+        var selectedIds = [];
+        $('.aicf-widget-checkbox:checked').each(function () { selectedIds.push($(this).data('widget-id')); });
+
+        if (!selectedIds.length) {
+            $('#aicf-cost-estimate').hide();
+            return;
+        }
+
+        var totalFields = 0;
+        scannedWidgets.forEach(function (w) {
+            if (selectedIds.indexOf(w.id) !== -1) {
+                totalFields += Object.keys(w.fields).length;
+            }
+        });
+
+        // Estimation : ~500 tokens base system prompt + ~30 tokens par champ en entrée + ~150 tokens par champ en sortie
+        var inputTokens = 500 + (totalFields * 30);
+        var outputTokens = totalFields * 150;
+        var totalTokens = inputTokens + outputTokens;
+
+        $('#aicf-cost-estimate')
+            .html('&#x2248; ' + totalTokens + ' tokens &middot; ' + selectedIds.length + ' widget' + (selectedIds.length > 1 ? 's' : '') + ' &middot; ' + totalFields + ' champ' + (totalFields > 1 ? 's' : ''))
+            .show();
     }
 
     // ---------------------------------------------------------------
@@ -497,6 +612,50 @@
         }
 
         return cachedRootContainer;
+    }
+
+    // ---------------------------------------------------------------
+    // Sauvegarde de l'historique (pour le revert)
+    // ---------------------------------------------------------------
+
+    function saveWidgetToHistory(widgetId, rootContainer) {
+        var container = findContainerById(rootContainer, widgetId);
+        if (!container) return;
+
+        var widgetType = container.model.get('widgetType');
+        var reg = WIDGET_REGISTRY[widgetType];
+        if (!reg) return;
+
+        var currentFields = {};
+        if (reg.fields) {
+            for (var key in reg.fields) {
+                if (reg.fields.hasOwnProperty(key)) {
+                    currentFields[key] = getSettingValue(container.model, key) || '';
+                }
+            }
+        }
+        if (reg.repeaters) {
+            for (var repKey in reg.repeaters) {
+                if (!reg.repeaters.hasOwnProperty(repKey)) continue;
+                var repDef = reg.repeaters[repKey];
+                var repData = getRepeaterValue(container.model, repKey);
+                if (repData && repData.length) {
+                    for (var ri = 0; ri < repData.length; ri++) {
+                        for (var fk in repDef.fields) {
+                            if (!repDef.fields.hasOwnProperty(fk)) continue;
+                            currentFields[repKey + '.' + ri + '.' + fk] = (repData[ri] && repData[ri][fk]) || '';
+                        }
+                    }
+                }
+            }
+        }
+        widgetHistory[widgetId] = currentFields;
+    }
+
+    function saveAllToHistory(widgetIds, rootContainer) {
+        widgetIds.forEach(function (id) {
+            saveWidgetToHistory(id, rootContainer);
+        });
     }
 
     // ---------------------------------------------------------------
@@ -530,6 +689,7 @@
             $('#aicf-scan-btn').hide();
             $('#aicf-action-bar').show();
             updateGenerateButtonLabel();
+            updateCostEstimate();
             setStatus('Sélectionnez les widgets à remplir, puis cliquez sur Générer.', 'idle');
         } catch (err) {
             console.error('[AI Content Filler] Erreur scan:', err);
@@ -548,12 +708,17 @@
             $(this).remove();
             updateWidgetCount();
             updateGenerateButtonLabel();
+            updateCostEstimate();
             if ($('.aicf-wl-item').length === 0) { onBackToPrompt(); setStatus(config.i18n.no_widgets, 'error'); }
         });
         scannedWidgets = scannedWidgets.filter(function (w) { return w.id !== widgetId; });
     }
 
-    function onWidgetCheckboxChange() { updateWidgetCount(); updateGenerateButtonLabel(); }
+    function onWidgetCheckboxChange() {
+        updateWidgetCount();
+        updateGenerateButtonLabel();
+        updateCostEstimate();
+    }
 
     function onSelectAllToggle() {
         var $btn = $(this);
@@ -567,6 +732,7 @@
         }
         updateWidgetCount();
         updateGenerateButtonLabel();
+        updateCostEstimate();
     }
 
     function onBackToPrompt() {
@@ -576,8 +742,141 @@
         cachedPageId = 0;
         $('#aicf-widget-list-container').empty();
         $('#aicf-action-bar').hide();
+        $('#aicf-cost-estimate').hide();
         $('#aicf-scan-btn').show();
         setStatus(config.i18n.idle, 'idle');
+    }
+
+    // ---------------------------------------------------------------
+    // Régénération d'un seul widget
+    // ---------------------------------------------------------------
+
+    function onRegenerateWidget(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isGenerating) return;
+
+        var widgetId = $(this).data('widget-id');
+        var widget = null;
+        for (var i = 0; i < scannedWidgets.length; i++) {
+            if (scannedWidgets[i].id === widgetId) { widget = scannedWidgets[i]; break; }
+        }
+        if (!widget) return;
+
+        var prompt = $.trim($('#aicf-prompt').val());
+        if (!prompt) { setStatus(config.i18n.empty_prompt, 'error'); return; }
+
+        isGenerating = true;
+        var $btn = $(this);
+        $btn.prop('disabled', true).addClass('aicf-spinning');
+        setStatus('Régénération d\'un widget...', 'loading');
+
+        var tone = $('#aicf-tone').val();
+        var headingStyle = $('#aicf-heading-style').val();
+
+        // Sauvegarder l'état actuel avant régénération
+        refreshRootContainer();
+        saveWidgetToHistory(widgetId, cachedRootContainer);
+
+        fetch(config.restUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': config.nonce },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                page_id: cachedPageId,
+                user_prompt: prompt,
+                widgets: [widget],
+                tone: tone,
+                heading_style: headingStyle
+            })
+        })
+        .then(function (response) {
+            return response.json().then(function (data) { return { status: response.status, data: data }; });
+        })
+        .then(function (result) {
+            if (result.status !== 200 || !result.data.success) {
+                var errorMsg = '';
+                if (result.data && result.data.message) errorMsg = result.data.message;
+                else if (result.data && result.data.data && result.data.data.message) errorMsg = result.data.data.message;
+                else errorMsg = 'Erreur';
+                throw new Error(errorMsg);
+            }
+
+            refreshRootContainer();
+            applyGeneratedContent(result.data.widgets, cachedRootContainer);
+
+            var $item = $('.aicf-wl-item[data-widget-id="' + widgetId + '"]');
+            $item.addClass('aicf-wl-item-done');
+            $item.find('.aicf-widget-revert').show();
+
+            setStatus('Widget régénéré ! — ' + config.i18n.save_reminder, 'success');
+        })
+        .catch(function (err) {
+            console.error('[AI Content Filler] Erreur régénération:', err);
+            setStatus(config.i18n.error + ' : ' + err.message, 'error');
+        })
+        .finally(function () {
+            isGenerating = false;
+            $btn.prop('disabled', false).removeClass('aicf-spinning');
+        });
+    }
+
+    // ---------------------------------------------------------------
+    // Revert (restaurer le contenu précédent)
+    // ---------------------------------------------------------------
+
+    function onRevertWidget(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var widgetId = $(this).data('widget-id');
+
+        if (!widgetHistory[widgetId]) {
+            setStatus('Pas d\'historique disponible.', 'error');
+            return;
+        }
+
+        refreshRootContainer();
+        var container = findContainerById(cachedRootContainer, widgetId);
+        if (!container) {
+            setStatus('Widget non trouvé.', 'error');
+            return;
+        }
+
+        var previousContent = widgetHistory[widgetId];
+
+        // Séparer champs directs / repeater
+        var directSettings = {};
+        var repeaterUpdates = {};
+        for (var key in previousContent) {
+            if (!previousContent.hasOwnProperty(key)) continue;
+            var parts = key.split('.');
+            if (parts.length === 3) {
+                var rKey = parts[0], rIdx = parseInt(parts[1], 10), rField = parts[2];
+                if (!repeaterUpdates[rKey]) repeaterUpdates[rKey] = {};
+                if (!repeaterUpdates[rKey][rIdx]) repeaterUpdates[rKey][rIdx] = {};
+                repeaterUpdates[rKey][rIdx][rField] = previousContent[key];
+            } else {
+                directSettings[key] = previousContent[key];
+            }
+        }
+
+        for (var dk in directSettings) {
+            if (directSettings.hasOwnProperty(dk)) {
+                applySettingToWidget(container, dk, directSettings[dk]);
+            }
+        }
+        for (var rk in repeaterUpdates) {
+            if (repeaterUpdates.hasOwnProperty(rk)) {
+                applyRepeaterUpdate(container, rk, repeaterUpdates[rk]);
+            }
+        }
+
+        delete widgetHistory[widgetId];
+        var $item = $('.aicf-wl-item[data-widget-id="' + widgetId + '"]');
+        $item.removeClass('aicf-wl-item-done');
+        $item.find('.aicf-widget-revert').hide();
+
+        setStatus('Contenu précédent restauré.', 'success');
     }
 
     // ---------------------------------------------------------------
@@ -597,18 +896,32 @@
             var selectedWidgets = scannedWidgets.filter(function (w) { return selectedIds.indexOf(w.id) !== -1; });
             if (!selectedWidgets.length) { setStatus('Aucun widget sélectionné.', 'error'); return; }
 
+            var tone = $('#aicf-tone').val();
+            var headingStyle = $('#aicf-heading-style').val();
+
             isGenerating = true;
             currentStep = 'generating';
             setStatus(config.i18n.loading + ' (' + selectedWidgets.length + ' widget' + (selectedWidgets.length > 1 ? 's' : '') + ')', 'loading');
             $('#aicf-generate-btn').prop('disabled', true).html('&#10024; Génération...');
             $('#aicf-rescan-btn').prop('disabled', true);
-            $('.aicf-widget-checkbox, .aicf-widget-remove, #aicf-select-all').prop('disabled', true);
+            $('#aicf-back-to-prompt').prop('disabled', true);
+            $('.aicf-widget-checkbox, .aicf-widget-remove, .aicf-widget-regen, .aicf-widget-revert, #aicf-select-all').prop('disabled', true);
+
+            // Sauvegarder l'état actuel de tous les widgets sélectionnés
+            refreshRootContainer();
+            saveAllToHistory(selectedIds, cachedRootContainer);
 
             fetch(config.restUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': config.nonce },
                 credentials: 'same-origin',
-                body: JSON.stringify({ page_id: cachedPageId, user_prompt: prompt, widgets: selectedWidgets })
+                body: JSON.stringify({
+                    page_id: cachedPageId,
+                    user_prompt: prompt,
+                    widgets: selectedWidgets,
+                    tone: tone,
+                    heading_style: headingStyle
+                })
             })
             .then(function (response) {
                 return response.json().then(function (data) { return { status: response.status, data: data }; });
@@ -624,14 +937,15 @@
                 }
 
                 // Rafraîchir le container pour avoir des références à jour
-                // (indispensable pour enchaîner plusieurs générations)
                 refreshRootContainer();
 
                 var applied = applyGeneratedContent(result.data.widgets, cachedRootContainer);
 
                 if (result.data.widgets) {
                     result.data.widgets.forEach(function (gw) {
-                        $('.aicf-wl-item[data-widget-id="' + gw.id + '"]').addClass('aicf-wl-item-done');
+                        var $item = $('.aicf-wl-item[data-widget-id="' + gw.id + '"]');
+                        $item.addClass('aicf-wl-item-done');
+                        $item.find('.aicf-widget-revert').show();
                     });
                 }
 
@@ -646,7 +960,8 @@
                 currentStep = 'select';
                 $('#aicf-generate-btn').prop('disabled', false);
                 $('#aicf-rescan-btn').prop('disabled', false);
-                $('.aicf-widget-checkbox, .aicf-widget-remove, #aicf-select-all').prop('disabled', false);
+                $('#aicf-back-to-prompt').prop('disabled', false);
+                $('.aicf-widget-checkbox, .aicf-widget-remove, .aicf-widget-regen, .aicf-widget-revert, #aicf-select-all').prop('disabled', false);
                 updateGenerateButtonLabel();
             });
 
@@ -657,7 +972,8 @@
             currentStep = 'select';
             $('#aicf-generate-btn').prop('disabled', false);
             $('#aicf-rescan-btn').prop('disabled', false);
-            $('.aicf-widget-checkbox, .aicf-widget-remove, #aicf-select-all').prop('disabled', false);
+            $('#aicf-back-to-prompt').prop('disabled', false);
+            $('.aicf-widget-checkbox, .aicf-widget-remove, .aicf-widget-regen, .aicf-widget-revert, #aicf-select-all').prop('disabled', false);
             updateGenerateButtonLabel();
         }
     }
