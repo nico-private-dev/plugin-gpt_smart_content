@@ -140,13 +140,19 @@
         },
 
         // --- Elementor nested widgets (3.15+) ---
+        // Les titres sont dans le repeater 'items' du widget parent,
+        // le contenu de chaque panneau est géré par les widgets enfants.
         'nested-accordion': {
             label: 'Accordéon', cssClass: 'text',
-            nestedTitles: { containerKey: 'items', titleField: 'item_title' }
+            repeaters: {
+                'items': { fields: { 'item_title': 'Titre' } }
+            }
         },
         'nested-tabs': {
             label: 'Onglets', cssClass: 'text',
-            nestedTitles: { containerKey: 'items', titleField: 'item_title' }
+            repeaters: {
+                'items': { fields: { 'item_title': 'Titre' } }
+            }
         }
     };
 
@@ -344,19 +350,6 @@
                                         fields[repKey + '.' + ri + '.' + fk] = (item && item[fk]) || '';
                                     }
                                 }
-                            }
-                        }
-                    }
-
-                    // Widgets nested (3.15+) : titres dans les containers enfants
-                    if (reg.nestedTitles) {
-                        var nt = reg.nestedTitles;
-                        var childElements = child.model.get('elements');
-                        if (childElements && childElements.models) {
-                            for (var ni = 0; ni < childElements.models.length; ni++) {
-                                var nestedChild = childElements.models[ni];
-                                var nestedTitle = getSettingValue(nestedChild, nt.titleField) || '';
-                                fields[nt.containerKey + '.' + ni + '.' + nt.titleField] = nestedTitle;
                             }
                         }
                     }
@@ -716,13 +709,7 @@
 
                 for (var repK in repeaterUpdates) {
                     if (!repeaterUpdates.hasOwnProperty(repK)) continue;
-                    // Pour les widgets nested (accordion, tabs), appliquer via les containers enfants
-                    var regApply = WIDGET_REGISTRY[widgetType];
-                    if (regApply && regApply.nestedTitles && regApply.nestedTitles.containerKey === repK) {
-                        if (applyNestedTitleUpdate(widgetContainer, regApply.nestedTitles.titleField, repeaterUpdates[repK])) widgetApplied = true;
-                    } else {
-                        if (applyRepeaterUpdate(widgetContainer, repK, repeaterUpdates[repK])) widgetApplied = true;
-                    }
+                    if (applyRepeaterUpdate(widgetContainer, repK, repeaterUpdates[repK])) widgetApplied = true;
                 }
 
                 if (widgetApplied) appliedCount++;
@@ -827,47 +814,6 @@
             return applied;
         } catch (e) {
             console.error('[AI Content Filler] Erreur repeater "' + repeaterKey + '":', e);
-            return false;
-        }
-    }
-
-    /**
-     * Met à jour les titres d'un widget nested (accordion, tabs 3.15+).
-     * Les titres sont des settings sur les containers enfants du widget.
-     */
-    function applyNestedTitleUpdate(widgetContainer, titleField, updates) {
-        try {
-            var childElements = widgetContainer.model.get('elements');
-            if (!childElements || !childElements.models) return false;
-
-            var applied = false;
-            for (var idx in updates) {
-                if (!updates.hasOwnProperty(idx)) continue;
-                var itemIdx = parseInt(idx, 10);
-                if (itemIdx >= childElements.models.length) continue;
-
-                var childModel = childElements.models[itemIdx];
-                var fields = updates[idx];
-
-                if (fields[titleField]) {
-                    // Appliquer via le container enfant s'il existe
-                    var childContainer = childModel.container || { model: childModel };
-                    if (applySettingToWidget(childContainer, titleField, fields[titleField])) {
-                        applied = true;
-                    }
-                }
-            }
-
-            if (applied) {
-                var settings = widgetContainer.model.get('settings');
-                if (settings && typeof settings.trigger === 'function') {
-                    settings.trigger('change', settings);
-                }
-            }
-
-            return applied;
-        } catch (e) {
-            console.error('[AI Content Filler] Erreur nested titles:', e);
             return false;
         }
     }
