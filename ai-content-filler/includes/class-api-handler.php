@@ -67,6 +67,7 @@ class AICF_API_Handler {
         'reviews'               => 'avis clients avec nom, poste et contenu — chaque item en notation slides.N.champ',
         'slides'                => 'diapositives avec titre, description et bouton — chaque item en notation slides.N.champ',
         'price-list'            => 'liste de prix avec titre, description et prix — chaque item en notation price_list.N.champ',
+        'icon-list'             => 'liste d\'icônes avec texte descriptif par item — chaque item en notation icon_list.N.text',
         // Elementor Free (repeaters)
         'accordion'             => 'accordéon avec titre et contenu riche par item — chaque item en notation tabs.N.champ',
         'toggle'                => 'bloc toggle avec titre et contenu riche par item — chaque item en notation tabs.N.champ',
