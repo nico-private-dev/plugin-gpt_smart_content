@@ -137,6 +137,16 @@
             repeaters: {
                 'tabs': { fields: { 'tab_title': 'Titre', 'tab_content': 'Contenu' } }
             }
+        },
+
+        // --- Elementor nested widgets (3.15+) ---
+        'nested-accordion': {
+            label: 'Accordéon', cssClass: 'text',
+            nestedTitles: { containerKey: 'items', titleField: 'item_title' }
+        },
+        'nested-tabs': {
+            label: 'Onglets', cssClass: 'text',
+            nestedTitles: { containerKey: 'items', titleField: 'item_title' }
         }
     };
 
@@ -338,6 +348,19 @@
                         }
                     }
 
+                    // Widgets nested (3.15+) : titres dans les containers enfants
+                    if (reg.nestedTitles) {
+                        var nt = reg.nestedTitles;
+                        var childElements = child.model.get('elements');
+                        if (childElements && childElements.models) {
+                            for (var ni = 0; ni < childElements.models.length; ni++) {
+                                var nestedChild = childElements.models[ni];
+                                var nestedTitle = getSettingValue(nestedChild, nt.titleField) || '';
+                                fields[nt.containerKey + '.' + ni + '.' + nt.titleField] = nestedTitle;
+                            }
+                        }
+                    }
+
                     if (Object.keys(fields).length > 0) {
                         widgets.push({ id: widgetId, type: widgetType, fields: fields });
                     }
@@ -444,6 +467,35 @@
     }
 
     // ---------------------------------------------------------------
+    // Helper : obtenir le root container Elementor (frais)
+    // ---------------------------------------------------------------
+
+    function refreshRootContainer() {
+        cachedRootContainer = null;
+        try {
+            var currentDocument = elementor.documents.getCurrent();
+            if (currentDocument && currentDocument.container) {
+                cachedRootContainer = currentDocument.container;
+            }
+        } catch (e) {}
+
+        if (!cachedRootContainer) {
+            try {
+                if (elementor.elements && elementor.elements.models) {
+                    cachedRootContainer = {
+                        model: null,
+                        children: elementor.elements.models.map(function (m) {
+                            return m.container || { model: m, children: getChildrenFromModel(m) };
+                        })
+                    };
+                }
+            } catch (e) {}
+        }
+
+        return cachedRootContainer;
+    }
+
+    // ---------------------------------------------------------------
     // Étape 1 : Scan
     // ---------------------------------------------------------------
 
@@ -463,25 +515,7 @@
             }
             if (!cachedPageId) { setStatus('Impossible de déterminer l\'ID de la page.', 'error'); return; }
 
-            cachedRootContainer = null;
-            try {
-                var currentDocument = elementor.documents.getCurrent();
-                if (currentDocument && currentDocument.container) cachedRootContainer = currentDocument.container;
-            } catch (e) {}
-
-            if (!cachedRootContainer) {
-                try {
-                    if (elementor.elements && elementor.elements.models) {
-                        cachedRootContainer = {
-                            model: null,
-                            children: elementor.elements.models.map(function (m) {
-                                return m.container || { model: m, children: getChildrenFromModel(m) };
-                            })
-                        };
-                    }
-                } catch (e) {}
-            }
-
+            refreshRootContainer();
             if (!cachedRootContainer) { setStatus('Document Elementor non accessible.', 'error'); return; }
 
             scannedWidgets = scanWidgets(cachedRootContainer);
@@ -585,6 +619,10 @@
                     throw new Error(errorMsg);
                 }
 
+                // Rafraîchir le container pour avoir des références à jour
+                // (indispensable pour enchaîner plusieurs générations)
+                refreshRootContainer();
+
                 var applied = applyGeneratedContent(result.data.widgets, cachedRootContainer);
 
                 if (result.data.widgets) {
@@ -678,7 +716,13 @@
 
                 for (var repK in repeaterUpdates) {
                     if (!repeaterUpdates.hasOwnProperty(repK)) continue;
-                    if (applyRepeaterUpdate(widgetContainer, repK, repeaterUpdates[repK])) widgetApplied = true;
+                    // Pour les widgets nested (accordion, tabs), appliquer via les containers enfants
+                    var regApply = WIDGET_REGISTRY[widgetType];
+                    if (regApply && regApply.nestedTitles && regApply.nestedTitles.containerKey === repK) {
+                        if (applyNestedTitleUpdate(widgetContainer, regApply.nestedTitles.titleField, repeaterUpdates[repK])) widgetApplied = true;
+                    } else {
+                        if (applyRepeaterUpdate(widgetContainer, repK, repeaterUpdates[repK])) widgetApplied = true;
+                    }
                 }
 
                 if (widgetApplied) appliedCount++;
@@ -783,6 +827,47 @@
             return applied;
         } catch (e) {
             console.error('[AI Content Filler] Erreur repeater "' + repeaterKey + '":', e);
+            return false;
+        }
+    }
+
+    /**
+     * Met à jour les titres d'un widget nested (accordion, tabs 3.15+).
+     * Les titres sont des settings sur les containers enfants du widget.
+     */
+    function applyNestedTitleUpdate(widgetContainer, titleField, updates) {
+        try {
+            var childElements = widgetContainer.model.get('elements');
+            if (!childElements || !childElements.models) return false;
+
+            var applied = false;
+            for (var idx in updates) {
+                if (!updates.hasOwnProperty(idx)) continue;
+                var itemIdx = parseInt(idx, 10);
+                if (itemIdx >= childElements.models.length) continue;
+
+                var childModel = childElements.models[itemIdx];
+                var fields = updates[idx];
+
+                if (fields[titleField]) {
+                    // Appliquer via le container enfant s'il existe
+                    var childContainer = childModel.container || { model: childModel };
+                    if (applySettingToWidget(childContainer, titleField, fields[titleField])) {
+                        applied = true;
+                    }
+                }
+            }
+
+            if (applied) {
+                var settings = widgetContainer.model.get('settings');
+                if (settings && typeof settings.trigger === 'function') {
+                    settings.trigger('change', settings);
+                }
+            }
+
+            return applied;
+        } catch (e) {
+            console.error('[AI Content Filler] Erreur nested titles:', e);
             return false;
         }
     }
