@@ -85,7 +85,7 @@ class AICF_API_Handler {
      * @param int    $page_id      ID de la page WordPress.
      * @return array|WP_Error      Tableau de widgets avec contenu généré, ou WP_Error.
      */
-    public function generate_content( $user_prompt, $widgets, $page_id ) {
+    public function generate_content( $user_prompt, $widgets, $page_id, $options = array() ) {
         $api_key = AICF_Settings::get_api_key();
 
         if ( empty( $api_key ) ) {
@@ -96,7 +96,10 @@ class AICF_API_Handler {
             );
         }
 
-        $system_prompt = $this->build_system_prompt();
+        $tone          = isset( $options['tone'] ) ? $options['tone'] : '';
+        $heading_style = isset( $options['heading_style'] ) ? $options['heading_style'] : 'none';
+
+        $system_prompt = $this->build_system_prompt( $tone, $heading_style );
         $user_message  = $this->build_user_message( $user_prompt, $widgets, $page_id );
         $widget_count  = count( $widgets );
 
@@ -136,7 +139,22 @@ class AICF_API_Handler {
     /**
      * Construit le system prompt à partir du brief client et des réglages.
      */
-    private function build_system_prompt() {
+    /** Descriptions des tons pour le system prompt */
+    private static $tone_descriptions = array(
+        'professional' => 'Adopte un ton professionnel, sérieux et rassurant. Vocabulaire soutenu, phrases construites et crédibles.',
+        'casual'       => 'Adopte un ton décontracté, amical et accessible. Langage courant, phrases courtes et dynamiques.',
+        'commercial'   => 'Adopte un ton commercial et persuasif. Mets en avant les bénéfices, utilise des verbes d\'action et des chiffres.',
+        'technical'    => 'Adopte un ton technique et expert. Vocabulaire spécialisé, précis et factuel.',
+    );
+
+    /** Instructions HTML pour le style des titres */
+    private static $heading_style_instructions = array(
+        'highlight' => 'Pour chaque titre (champs title, title_text, heading, before_text, alert_title, tab_title, item_title), mets en valeur 1 à 2 mots-clés importants en les enveloppant dans <span style="background: linear-gradient(180deg, transparent 60%, #fde68a 60%)">mot</span>. Le reste du titre reste en texte brut sans balise.',
+        'underline' => 'Pour chaque titre (champs title, title_text, heading, before_text, alert_title, tab_title, item_title), mets en valeur 1 à 2 mots-clés importants en les enveloppant dans <span style="text-decoration: underline; text-decoration-color: #6366f1; text-underline-offset: 5px; text-decoration-thickness: 3px">mot</span>. Le reste du titre reste en texte brut sans balise.',
+        'color'     => 'Pour chaque titre (champs title, title_text, heading, before_text, alert_title, tab_title, item_title), mets en valeur 1 à 2 mots-clés importants en les enveloppant dans <span style="color: #6366f1">mot</span>. Le reste du titre reste en texte brut sans balise.',
+    );
+
+    private function build_system_prompt( $tone = '', $heading_style = 'none' ) {
         $brief      = AICF_Settings::get_client_brief();
         $file_brief = AICF_Settings::extract_brief_file_content();
         $lang_code  = AICF_Settings::get_language();
@@ -152,6 +170,11 @@ class AICF_API_Handler {
             $system .= "BRIEF CLIENT (document importé) :\n" . $file_brief . "\n\n";
         }
 
+        // Ton rédactionnel
+        if ( ! empty( $tone ) && isset( self::$tone_descriptions[ $tone ] ) ) {
+            $system .= "TON RÉDACTIONNEL :\n" . self::$tone_descriptions[ $tone ] . "\n\n";
+        }
+
         $system .= "RÈGLES DE RÉDACTION :\n";
         $system .= "- Adapte le style au type de champ :\n";
         $system .= "  * Titres (title, title_text, heading, before_text, highlighted_text, alert_title, etc.) : courts et percutants, 5-8 mots max.\n";
@@ -163,6 +186,12 @@ class AICF_API_Handler {
         $system .= "  * Citations (blockquote_content) : citation pertinente et percutante.\n";
         $system .= "  * Sous-titres (sub_heading) : phrase d'accroche courte.\n";
         $system .= "  * Périodes (period) : durée courte (ex: '/mois', '/an').\n";
+
+        // Style HTML des titres
+        if ( 'none' !== $heading_style && isset( self::$heading_style_instructions[ $heading_style ] ) ) {
+            $system .= "- STYLE DES TITRES : " . self::$heading_style_instructions[ $heading_style ] . "\n";
+        }
+
         $system .= "- Pour les widgets à items multiples (carrousels, listes), les champs utilisent la notation pointée : repKey.index.field (ex: slides.0.content, slides.1.name). Reproduis exactement ces clés dans ta réponse.\n";
         $system .= "- Respecte exactement les IDs des widgets et les clés des champs fournis dans ta réponse.\n";
         $system .= "- Réponds UNIQUEMENT avec un objet JSON valide, sans texte avant ni après.\n";
