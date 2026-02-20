@@ -71,6 +71,9 @@ class AICF_API_Handler {
         'accordion'             => 'accordéon avec titre et contenu riche par item — chaque item en notation tabs.N.champ',
         'toggle'                => 'bloc toggle avec titre et contenu riche par item — chaque item en notation tabs.N.champ',
         'tabs'                  => 'onglets avec titre et contenu riche par item — chaque item en notation tabs.N.champ',
+        // Elementor nested widgets (3.15+)
+        'nested-accordion'      => 'accordéon nested : titres des items — chaque item en notation items.N.item_title',
+        'nested-tabs'           => 'onglets nested : titres des items — chaque item en notation items.N.item_title',
     );
 
     /**
