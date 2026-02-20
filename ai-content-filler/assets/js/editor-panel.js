@@ -119,6 +119,13 @@
             }
         },
 
+        'icon-list': {
+            label: 'Liste d\'icônes', cssClass: 'data',
+            repeaters: {
+                'icon_list': { fields: { 'text': 'Texte' } }
+            }
+        },
+
         // --- Elementor Free (widgets avec repeaters) ---
         'accordion': {
             label: 'Accordéon', cssClass: 'text',
@@ -752,6 +759,9 @@
 
     /**
      * Met à jour les champs texte d'un repeater Elementor.
+     * Clone les données, applique les modifications, puis injecte via $e.run
+     * pour déclencher le re-rendu du preview dans le builder.
+     *
      * @param {Object} widgetContainer  Container du widget
      * @param {string} repeaterKey      Clé du repeater (ex: 'slides')
      * @param {Object} updates          { index: { field: value } }
@@ -764,51 +774,39 @@
             var repeater = settings.get(repeaterKey);
             if (!repeater) return false;
 
-            var applied = false;
-
-            // Backbone Collection
+            // Cloner les données du repeater en tableau JSON brut
+            var repeaterData;
             if (repeater.models) {
-                for (var idx in updates) {
-                    if (!updates.hasOwnProperty(idx)) continue;
-                    var itemIdx = parseInt(idx, 10);
-                    if (itemIdx >= repeater.models.length) continue;
-
-                    var itemModel = repeater.models[itemIdx];
-                    var fields = updates[idx];
-
-                    for (var field in fields) {
-                        if (fields.hasOwnProperty(field)) {
-                            itemModel.set(field, fields[field]);
-                        }
-                    }
-                    applied = true;
-                }
-
-                if (applied) {
-                    settings.trigger('change', settings);
-                    settings.trigger('change:' + repeaterKey, settings);
-                }
+                repeaterData = repeater.models.map(function (m) {
+                    return m.attributes ? JSON.parse(JSON.stringify(m.attributes)) : {};
+                });
+            } else if (Array.isArray(repeater)) {
+                repeaterData = JSON.parse(JSON.stringify(repeater));
+            } else if (typeof repeater.toJSON === 'function') {
+                repeaterData = repeater.toJSON();
+            } else {
+                return false;
             }
-            // Tableau simple (fallback)
-            else if (Array.isArray(repeater)) {
-                var modified = JSON.parse(JSON.stringify(repeater));
-                for (var idx2 in updates) {
-                    if (!updates.hasOwnProperty(idx2)) continue;
-                    var itemIdx2 = parseInt(idx2, 10);
-                    if (itemIdx2 >= modified.length) continue;
 
-                    var fields2 = updates[idx2];
-                    for (var field2 in fields2) {
-                        if (fields2.hasOwnProperty(field2)) {
-                            modified[itemIdx2][field2] = fields2[field2];
-                        }
+            // Appliquer les modifications sur le clone
+            var applied = false;
+            for (var idx in updates) {
+                if (!updates.hasOwnProperty(idx)) continue;
+                var itemIdx = parseInt(idx, 10);
+                if (itemIdx >= repeaterData.length) continue;
+
+                var fields = updates[idx];
+                for (var field in fields) {
+                    if (fields.hasOwnProperty(field)) {
+                        repeaterData[itemIdx][field] = fields[field];
                     }
-                    applied = true;
                 }
+                applied = true;
+            }
 
-                if (applied) {
-                    applySettingToWidget(widgetContainer, repeaterKey, modified);
-                }
+            // Injecter via $e.run → déclenche le re-rendu du preview
+            if (applied) {
+                applySettingToWidget(widgetContainer, repeaterKey, repeaterData);
             }
 
             return applied;
