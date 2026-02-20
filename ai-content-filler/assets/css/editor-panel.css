@@ -98,7 +98,7 @@
     color: #9ca3af;
 }
 
-/* ---- Boutons Scanner / Générer ---- */
+/* ---- Boutons Scanner / Générer / Rescanner ---- */
 #aicf-scan-btn,
 #aicf-generate-btn {
     display: block;
@@ -114,6 +114,40 @@
     cursor: pointer;
     transition: opacity 0.2s, transform 0.1s;
     letter-spacing: 0.3px;
+}
+
+#aicf-action-bar {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+#aicf-action-bar #aicf-generate-btn {
+    flex: 1;
+    margin-top: 0;
+}
+
+#aicf-rescan-btn {
+    padding: 10px 12px;
+    background: #f3f4f6;
+    color: #6366f1;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+
+#aicf-rescan-btn:hover {
+    background: #eef2ff;
+    border-color: #6366f1;
+}
+
+#aicf-rescan-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 #aicf-scan-btn:hover,
