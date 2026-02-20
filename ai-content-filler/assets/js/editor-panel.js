@@ -181,7 +181,10 @@
                     '<textarea id="aicf-prompt" placeholder="Décrivez l\'objectif de cette page..." rows="3"></textarea>' +
                     '<div id="aicf-widget-list-container"></div>' +
                     '<button id="aicf-scan-btn" type="button">&#128269; Scanner les widgets</button>' +
-                    '<button id="aicf-generate-btn" type="button" style="display:none;">&#10024; Générer le contenu</button>' +
+                    '<div id="aicf-action-bar" style="display:none;">' +
+                        '<button id="aicf-generate-btn" type="button">&#10024; Générer le contenu</button>' +
+                        '<button id="aicf-rescan-btn" type="button" title="Rescanner les widgets">&#128260; Rescanner</button>' +
+                    '</div>' +
                     '<div id="aicf-status" class="aicf-status-idle">' + config.i18n.idle + '</div>' +
                 '</div>' +
             '</div>';
@@ -189,6 +192,7 @@
         $('body').append(panelHTML);
 
         $(document).on('click', '#aicf-scan-btn', onScanClick);
+        $(document).on('click', '#aicf-rescan-btn', onScanClick);
         $(document).on('click', '#aicf-generate-btn', onGenerateClick);
         $(document).on('click', '#aicf-panel-toggle', onTogglePanel);
         $(document).on('click', '.aicf-widget-remove', onWidgetRemove);
@@ -524,7 +528,7 @@
             currentStep = 'select';
             renderWidgetList(scannedWidgets);
             $('#aicf-scan-btn').hide();
-            $('#aicf-generate-btn').show();
+            $('#aicf-action-bar').show();
             updateGenerateButtonLabel();
             setStatus('Sélectionnez les widgets à remplir, puis cliquez sur Générer.', 'idle');
         } catch (err) {
@@ -571,7 +575,7 @@
         cachedRootContainer = null;
         cachedPageId = 0;
         $('#aicf-widget-list-container').empty();
-        $('#aicf-generate-btn').hide();
+        $('#aicf-action-bar').hide();
         $('#aicf-scan-btn').show();
         setStatus(config.i18n.idle, 'idle');
     }
@@ -597,7 +601,7 @@
             currentStep = 'generating';
             setStatus(config.i18n.loading + ' (' + selectedWidgets.length + ' widget' + (selectedWidgets.length > 1 ? 's' : '') + ')', 'loading');
             $('#aicf-generate-btn').prop('disabled', true).html('&#10024; Génération...');
-            $('#aicf-scan-btn').prop('disabled', true);
+            $('#aicf-rescan-btn').prop('disabled', true);
             $('.aicf-widget-checkbox, .aicf-widget-remove, #aicf-select-all').prop('disabled', true);
 
             fetch(config.restUrl, {
@@ -641,7 +645,7 @@
                 isGenerating = false;
                 currentStep = 'select';
                 $('#aicf-generate-btn').prop('disabled', false);
-                $('#aicf-scan-btn').prop('disabled', false);
+                $('#aicf-rescan-btn').prop('disabled', false);
                 $('.aicf-widget-checkbox, .aicf-widget-remove, #aicf-select-all').prop('disabled', false);
                 updateGenerateButtonLabel();
             });
@@ -652,7 +656,7 @@
             isGenerating = false;
             currentStep = 'select';
             $('#aicf-generate-btn').prop('disabled', false);
-            $('#aicf-scan-btn').prop('disabled', false);
+            $('#aicf-rescan-btn').prop('disabled', false);
             $('.aicf-widget-checkbox, .aicf-widget-remove, #aicf-select-all').prop('disabled', false);
             updateGenerateButtonLabel();
         }
