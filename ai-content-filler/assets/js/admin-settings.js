@@ -143,6 +143,39 @@
     } );
 
     // =========================================================================
+    // 5. Color picker pour la couleur d'accent des titres
+    // =========================================================================
+
+    $( '.aicf-color-picker' ).wpColorPicker( {
+        change: function ( event, ui ) {
+            // Met à jour l'input quand la couleur change
+            $( this ).val( ui.color.toString() ).trigger( 'change' );
+        }
+    } );
+
+    // Clic sur un swatch de couleur globale Elementor → mettre à jour le color picker
+    $( document ).on( 'click', '.aicf-color-swatch', function ( e ) {
+        e.preventDefault();
+        var color = $( this ).data( 'color' );
+        if ( color ) {
+            $( '.aicf-color-picker' ).wpColorPicker( 'color', color );
+        }
+    } );
+
+    // Afficher/masquer la couleur selon le style de titres choisi
+    function toggleColorVisibility() {
+        var style = $( '#aicf_heading_style' ).val();
+        var $colorRow = $( '#aicf_heading_style_color' ).closest( 'tr' );
+        if ( 'none' === style ) {
+            $colorRow.hide();
+        } else {
+            $colorRow.show();
+        }
+    }
+    $( '#aicf_heading_style' ).on( 'change', toggleColorVisibility );
+    toggleColorVisibility();
+
+    // =========================================================================
     // Utilitaire : échapper le HTML pour éviter les injections dans le DOM
     // =========================================================================
 

@@ -82,17 +82,18 @@ class AICF_Settings {
         if ( 'settings_page_ai-content-filler' !== $hook ) {
             return;
         }
+        wp_enqueue_style( 'wp-color-picker' );
         wp_enqueue_style(
             'aicf-admin-settings',
             AICF_PLUGIN_URL . 'assets/css/admin-settings.css',
-            array(),
+            array( 'wp-color-picker' ),
             AICF_VERSION
         );
         wp_enqueue_media();
         wp_enqueue_script(
             'aicf-admin-settings',
             AICF_PLUGIN_URL . 'assets/js/admin-settings.js',
-            array( 'jquery', 'media-upload' ),
+            array( 'jquery', 'media-upload', 'wp-color-picker' ),
             AICF_VERSION,
             true
         );
@@ -225,7 +226,59 @@ class AICF_Settings {
         );
 
         // =====================================================================
-        // SECTION 3 : Brief client
+        // SECTION 3 : Style de rédaction
+        // =====================================================================
+        add_settings_section(
+            'aicf_style_section',
+            __( 'Style de rédaction', 'ai-content-filler' ),
+            '__return_false',
+            self::PAGE_SLUG
+        );
+
+        // Ton rédactionnel
+        register_setting( self::OPTION_GROUP, self::OPTION_PREFIX . 'tone', array(
+            'type'              => 'string',
+            'sanitize_callback' => array( $this, 'sanitize_tone' ),
+            'default'           => '',
+        ) );
+        add_settings_field(
+            self::OPTION_PREFIX . 'tone',
+            __( 'Ton rédactionnel', 'ai-content-filler' ),
+            array( $this, 'render_tone_field' ),
+            self::PAGE_SLUG,
+            'aicf_style_section'
+        );
+
+        // Style des titres
+        register_setting( self::OPTION_GROUP, self::OPTION_PREFIX . 'heading_style', array(
+            'type'              => 'string',
+            'sanitize_callback' => array( $this, 'sanitize_heading_style' ),
+            'default'           => 'none',
+        ) );
+        add_settings_field(
+            self::OPTION_PREFIX . 'heading_style',
+            __( 'Style des titres', 'ai-content-filler' ),
+            array( $this, 'render_heading_style_field' ),
+            self::PAGE_SLUG,
+            'aicf_style_section'
+        );
+
+        // Couleur d'accent pour les titres
+        register_setting( self::OPTION_GROUP, self::OPTION_PREFIX . 'heading_style_color', array(
+            'type'              => 'string',
+            'sanitize_callback' => 'sanitize_hex_color',
+            'default'           => '#6366f1',
+        ) );
+        add_settings_field(
+            self::OPTION_PREFIX . 'heading_style_color',
+            __( 'Couleur d\'accent', 'ai-content-filler' ),
+            array( $this, 'render_heading_style_color_field' ),
+            self::PAGE_SLUG,
+            'aicf_style_section'
+        );
+
+        // =====================================================================
+        // SECTION 4 : Brief client
         // =====================================================================
         add_settings_section(
             'aicf_brief_section',
@@ -457,6 +510,83 @@ class AICF_Settings {
         <?php
     }
 
+    public function render_tone_field() {
+        $value = self::get_tone();
+        $tones = array(
+            ''             => __( 'Par défaut (neutre)', 'ai-content-filler' ),
+            'professional' => __( 'Professionnel — sérieux, rassurant', 'ai-content-filler' ),
+            'casual'       => __( 'Décontracté — amical, accessible', 'ai-content-filler' ),
+            'commercial'   => __( 'Commercial — persuasif, orienté bénéfices', 'ai-content-filler' ),
+            'technical'    => __( 'Technique — expert, précis', 'ai-content-filler' ),
+        );
+        echo '<select id="' . esc_attr( self::OPTION_PREFIX . 'tone' ) . '" name="' . esc_attr( self::OPTION_PREFIX . 'tone' ) . '" class="regular-text">';
+        foreach ( $tones as $code => $label ) {
+            printf(
+                '<option value="%s" %s>%s</option>',
+                esc_attr( $code ),
+                selected( $value, $code, false ),
+                esc_html( $label )
+            );
+        }
+        echo '</select>';
+        echo '<p class="description">' . esc_html__( 'Le ton sera appliqué à tout le contenu généré sur le site.', 'ai-content-filler' ) . '</p>';
+    }
+
+    public function render_heading_style_field() {
+        $value   = self::get_heading_style();
+        $styles  = array(
+            'none'      => __( 'Normal — texte brut', 'ai-content-filler' ),
+            'highlight' => __( 'Surlignement — effet marqueur sur les mots-clés', 'ai-content-filler' ),
+            'underline' => __( 'Soulignement — trait d\'accent sous les mots-clés', 'ai-content-filler' ),
+            'color'     => __( 'Couleur — mots-clés en couleur d\'accent', 'ai-content-filler' ),
+        );
+        echo '<select id="' . esc_attr( self::OPTION_PREFIX . 'heading_style' ) . '" name="' . esc_attr( self::OPTION_PREFIX . 'heading_style' ) . '" class="regular-text">';
+        foreach ( $styles as $code => $label ) {
+            printf(
+                '<option value="%s" %s>%s</option>',
+                esc_attr( $code ),
+                selected( $value, $code, false ),
+                esc_html( $label )
+            );
+        }
+        echo '</select>';
+        echo '<p class="description">' . esc_html__( 'L\'IA ajoutera du HTML inline sur 1 à 2 mots-clés dans chaque titre pour créer l\'effet choisi.', 'ai-content-filler' ) . '</p>';
+    }
+
+    public function render_heading_style_color_field() {
+        $value          = self::get_heading_style_color();
+        $global_colors  = self::get_elementor_global_colors();
+        ?>
+        <div class="aicf-color-field-wrap">
+            <input
+                type="text"
+                id="<?php echo esc_attr( self::OPTION_PREFIX . 'heading_style_color' ); ?>"
+                name="<?php echo esc_attr( self::OPTION_PREFIX . 'heading_style_color' ); ?>"
+                value="<?php echo esc_attr( $value ); ?>"
+                class="aicf-color-picker"
+                data-default-color="#6366f1"
+            />
+            <?php if ( ! empty( $global_colors ) ) : ?>
+            <div class="aicf-global-colors">
+                <span class="aicf-global-colors-label"><?php esc_html_e( 'Couleurs du site (Elementor) :', 'ai-content-filler' ); ?></span>
+                <div class="aicf-global-colors-swatches">
+                    <?php foreach ( $global_colors as $gc ) : ?>
+                    <button
+                        type="button"
+                        class="aicf-color-swatch"
+                        data-color="<?php echo esc_attr( $gc['color'] ); ?>"
+                        title="<?php echo esc_attr( $gc['title'] ); ?>"
+                        style="background-color: <?php echo esc_attr( $gc['color'] ); ?>;"
+                    ></button>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <?php endif; ?>
+        </div>
+        <p class="description"><?php esc_html_e( 'Couleur utilisée pour le surlignement, soulignement ou coloration des mots-clés dans les titres.', 'ai-content-filler' ); ?></p>
+        <?php
+    }
+
     // ------------------------------------------------------------------
     // Sanitisation personnalisée
     // ------------------------------------------------------------------
@@ -474,6 +604,16 @@ class AICF_Settings {
     public function sanitize_language( $value ) {
         $allowed = array( 'fr', 'en', 'es', 'de', 'it', 'pt', 'nl', 'ar' );
         return in_array( $value, $allowed, true ) ? $value : 'fr';
+    }
+
+    public function sanitize_tone( $value ) {
+        $allowed = array( '', 'professional', 'casual', 'commercial', 'technical' );
+        return in_array( $value, $allowed, true ) ? $value : '';
+    }
+
+    public function sanitize_heading_style( $value ) {
+        $allowed = array( 'none', 'highlight', 'underline', 'color' );
+        return in_array( $value, $allowed, true ) ? $value : 'none';
     }
 
     // ------------------------------------------------------------------
@@ -566,7 +706,21 @@ class AICF_Settings {
                     </div>
                 </div>
 
-                <!-- Section 3 : Brief client -->
+                <!-- Section 3 : Style de rédaction -->
+                <div class="aicf-card">
+                    <div class="aicf-card-header">
+                        <span class="aicf-card-icon">&#127912;</span>
+                        <h2><?php esc_html_e( 'Style de rédaction', 'ai-content-filler' ); ?></h2>
+                    </div>
+                    <div class="aicf-card-body">
+                        <p class="aicf-section-desc"><?php esc_html_e( 'Ces paramètres s\'appliquent à tout le contenu généré sur le site, quel que soit la page.', 'ai-content-filler' ); ?></p>
+                        <table class="form-table" role="presentation">
+                            <?php do_settings_fields( self::PAGE_SLUG, 'aicf_style_section' ); ?>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Section 4 : Brief client -->
                 <div class="aicf-card">
                     <div class="aicf-card-header">
                         <span class="aicf-card-icon">📋</span>
@@ -618,6 +772,66 @@ class AICF_Settings {
 
     public static function get_language() {
         return get_option( self::OPTION_PREFIX . 'language', 'fr' );
+    }
+
+    public static function get_tone() {
+        return get_option( self::OPTION_PREFIX . 'tone', '' );
+    }
+
+    public static function get_heading_style() {
+        return get_option( self::OPTION_PREFIX . 'heading_style', 'none' );
+    }
+
+    public static function get_heading_style_color() {
+        return get_option( self::OPTION_PREFIX . 'heading_style_color', '#6366f1' );
+    }
+
+    /**
+     * Récupère les couleurs globales définies dans le kit Elementor actif.
+     * Retourne un tableau de [ 'id' => ..., 'title' => ..., 'color' => '#hex' ].
+     *
+     * @return array
+     */
+    public static function get_elementor_global_colors() {
+        $colors = array();
+
+        $kit_id = absint( get_option( 'elementor_active_kit', 0 ) );
+        if ( ! $kit_id ) {
+            return $colors;
+        }
+
+        $settings = get_post_meta( $kit_id, '_elementor_page_settings', true );
+        if ( ! is_array( $settings ) ) {
+            return $colors;
+        }
+
+        // Couleurs système (primary, secondary, text, accent)
+        if ( ! empty( $settings['system_colors'] ) && is_array( $settings['system_colors'] ) ) {
+            foreach ( $settings['system_colors'] as $sc ) {
+                if ( ! empty( $sc['color'] ) ) {
+                    $colors[] = array(
+                        'id'    => isset( $sc['_id'] ) ? $sc['_id'] : '',
+                        'title' => isset( $sc['title'] ) ? $sc['title'] : '',
+                        'color' => $sc['color'],
+                    );
+                }
+            }
+        }
+
+        // Couleurs personnalisées
+        if ( ! empty( $settings['custom_colors'] ) && is_array( $settings['custom_colors'] ) ) {
+            foreach ( $settings['custom_colors'] as $cc ) {
+                if ( ! empty( $cc['color'] ) ) {
+                    $colors[] = array(
+                        'id'    => isset( $cc['_id'] ) ? $cc['_id'] : '',
+                        'title' => isset( $cc['title'] ) ? $cc['title'] : '',
+                        'color' => $cc['color'],
+                    );
+                }
+            }
+        }
+
+        return $colors;
     }
 
     public static function get_brief_attachment_id() {

@@ -85,7 +85,7 @@ class AICF_API_Handler {
      * @param int    $page_id      ID de la page WordPress.
      * @return array|WP_Error      Tableau de widgets avec contenu généré, ou WP_Error.
      */
-    public function generate_content( $user_prompt, $widgets, $page_id, $options = array() ) {
+    public function generate_content( $user_prompt, $widgets, $page_id ) {
         $api_key = AICF_Settings::get_api_key();
 
         if ( empty( $api_key ) ) {
@@ -96,10 +96,7 @@ class AICF_API_Handler {
             );
         }
 
-        $tone          = isset( $options['tone'] ) ? $options['tone'] : '';
-        $heading_style = isset( $options['heading_style'] ) ? $options['heading_style'] : 'none';
-
-        $system_prompt = $this->build_system_prompt( $tone, $heading_style );
+        $system_prompt = $this->build_system_prompt();
         $user_message  = $this->build_user_message( $user_prompt, $widgets, $page_id );
         $widget_count  = count( $widgets );
 
@@ -147,18 +144,58 @@ class AICF_API_Handler {
         'technical'    => 'Adopte un ton technique et expert. Vocabulaire spécialisé, précis et factuel.',
     );
 
-    /** Instructions HTML pour le style des titres */
-    private static $heading_style_instructions = array(
-        'highlight' => 'Pour chaque titre (champs title, title_text, heading, before_text, alert_title, tab_title, item_title), mets en valeur 1 à 2 mots-clés importants en les enveloppant dans <span style="background: linear-gradient(180deg, transparent 60%, #fde68a 60%)">mot</span>. Le reste du titre reste en texte brut sans balise.',
-        'underline' => 'Pour chaque titre (champs title, title_text, heading, before_text, alert_title, tab_title, item_title), mets en valeur 1 à 2 mots-clés importants en les enveloppant dans <span style="text-decoration: underline; text-decoration-color: #6366f1; text-underline-offset: 5px; text-decoration-thickness: 3px">mot</span>. Le reste du titre reste en texte brut sans balise.',
-        'color'     => 'Pour chaque titre (champs title, title_text, heading, before_text, alert_title, tab_title, item_title), mets en valeur 1 à 2 mots-clés importants en les enveloppant dans <span style="color: #6366f1">mot</span>. Le reste du titre reste en texte brut sans balise.',
-    );
+    /**
+     * Génère l'instruction HTML pour le style des titres, en injectant la couleur personnalisée.
+     *
+     * @param string $heading_style Style choisi (highlight, underline, color).
+     * @param string $color         Couleur hex personnalisée.
+     * @return string               Instruction pour le system prompt.
+     */
+    private static function get_heading_style_instruction( $heading_style, $color ) {
+        $title_fields = 'title, title_text, heading, before_text, alert_title, tab_title, item_title';
+        $prefix       = 'Pour chaque titre (champs ' . $title_fields . '), mets en valeur 1 à 2 mots-clés importants en les enveloppant dans ';
+        $suffix       = '. Le reste du titre reste en texte brut sans balise.';
 
-    private function build_system_prompt( $tone = '', $heading_style = 'none' ) {
-        $brief      = AICF_Settings::get_client_brief();
-        $file_brief = AICF_Settings::extract_brief_file_content();
-        $lang_code  = AICF_Settings::get_language();
-        $lang_name  = isset( self::$language_names[ $lang_code ] ) ? self::$language_names[ $lang_code ] : 'français';
+        switch ( $heading_style ) {
+            case 'highlight':
+                // Pour le surlignement, on utilise une version semi-transparente de la couleur
+                $rgba = self::hex_to_rgba( $color, 0.3 );
+                return $prefix . '<span style="background: linear-gradient(180deg, transparent 60%, ' . $rgba . ' 60%)">mot</span>' . $suffix;
+            case 'underline':
+                return $prefix . '<span style="text-decoration: underline; text-decoration-color: ' . $color . '; text-underline-offset: 5px; text-decoration-thickness: 3px">mot</span>' . $suffix;
+            case 'color':
+                return $prefix . '<span style="color: ' . $color . '">mot</span>' . $suffix;
+            default:
+                return '';
+        }
+    }
+
+    /**
+     * Convertit une couleur hex en rgba.
+     *
+     * @param string $hex   Couleur hex (#rrggbb).
+     * @param float  $alpha Opacité (0-1).
+     * @return string       rgba(r, g, b, a).
+     */
+    private static function hex_to_rgba( $hex, $alpha = 1.0 ) {
+        $hex = ltrim( $hex, '#' );
+        if ( strlen( $hex ) === 3 ) {
+            $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+        }
+        $r = hexdec( substr( $hex, 0, 2 ) );
+        $g = hexdec( substr( $hex, 2, 2 ) );
+        $b = hexdec( substr( $hex, 4, 2 ) );
+        return sprintf( 'rgba(%d, %d, %d, %s)', $r, $g, $b, $alpha );
+    }
+
+    private function build_system_prompt() {
+        $brief         = AICF_Settings::get_client_brief();
+        $file_brief    = AICF_Settings::extract_brief_file_content();
+        $lang_code     = AICF_Settings::get_language();
+        $lang_name     = isset( self::$language_names[ $lang_code ] ) ? self::$language_names[ $lang_code ] : 'français';
+        $tone          = AICF_Settings::get_tone();
+        $heading_style = AICF_Settings::get_heading_style();
+        $heading_color = AICF_Settings::get_heading_style_color();
 
         $system = "Tu es un rédacteur web professionnel. Tu rédiges du contenu pour des sites web créés avec WordPress et Elementor.\n\n";
 
@@ -187,9 +224,12 @@ class AICF_API_Handler {
         $system .= "  * Sous-titres (sub_heading) : phrase d'accroche courte.\n";
         $system .= "  * Périodes (period) : durée courte (ex: '/mois', '/an').\n";
 
-        // Style HTML des titres
-        if ( 'none' !== $heading_style && isset( self::$heading_style_instructions[ $heading_style ] ) ) {
-            $system .= "- STYLE DES TITRES : " . self::$heading_style_instructions[ $heading_style ] . "\n";
+        // Style HTML des titres (avec couleur personnalisée)
+        if ( 'none' !== $heading_style ) {
+            $instruction = self::get_heading_style_instruction( $heading_style, $heading_color );
+            if ( ! empty( $instruction ) ) {
+                $system .= "- STYLE DES TITRES : " . $instruction . "\n";
+            }
         }
 
         $system .= "- Pour les widgets à items multiples (carrousels, listes), les champs utilisent la notation pointée : repKey.index.field (ex: slides.0.content, slides.1.name). Reproduis exactement ces clés dans ta réponse.\n";

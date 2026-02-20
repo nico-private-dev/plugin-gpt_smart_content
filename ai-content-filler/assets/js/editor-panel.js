@@ -219,28 +219,6 @@
                         tplButtons +
                     '</div>' +
                     '<textarea id="aicf-prompt" placeholder="Décrivez l\'objectif de cette page..." rows="3"></textarea>' +
-                    // Options row (tone + heading style)
-                    '<div id="aicf-options-row" class="aicf-options-row">' +
-                        '<div class="aicf-option-group">' +
-                            '<label for="aicf-tone">Ton</label>' +
-                            '<select id="aicf-tone">' +
-                                '<option value="">Par défaut</option>' +
-                                '<option value="professional">Professionnel</option>' +
-                                '<option value="casual">Décontracté</option>' +
-                                '<option value="commercial">Commercial</option>' +
-                                '<option value="technical">Technique</option>' +
-                            '</select>' +
-                        '</div>' +
-                        '<div class="aicf-option-group">' +
-                            '<label for="aicf-heading-style">Titres</label>' +
-                            '<select id="aicf-heading-style">' +
-                                '<option value="none">Normal</option>' +
-                                '<option value="highlight">Surlignement</option>' +
-                                '<option value="underline">Soulignement</option>' +
-                                '<option value="color">Couleur</option>' +
-                            '</select>' +
-                        '</div>' +
-                    '</div>' +
                     '<div id="aicf-widget-list-container"></div>' +
                     '<div id="aicf-cost-estimate" class="aicf-cost-estimate" style="display:none;"></div>' +
                     '<button id="aicf-scan-btn" type="button">&#128269; Scanner les widgets</button>' +
@@ -771,9 +749,6 @@
         $btn.prop('disabled', true).addClass('aicf-spinning');
         setStatus('Régénération d\'un widget...', 'loading');
 
-        var tone = $('#aicf-tone').val();
-        var headingStyle = $('#aicf-heading-style').val();
-
         // Sauvegarder l'état actuel avant régénération
         refreshRootContainer();
         saveWidgetToHistory(widgetId, cachedRootContainer);
@@ -785,9 +760,7 @@
             body: JSON.stringify({
                 page_id: cachedPageId,
                 user_prompt: prompt,
-                widgets: [widget],
-                tone: tone,
-                heading_style: headingStyle
+                widgets: [widget]
             })
         })
         .then(function (response) {
@@ -896,9 +869,6 @@
             var selectedWidgets = scannedWidgets.filter(function (w) { return selectedIds.indexOf(w.id) !== -1; });
             if (!selectedWidgets.length) { setStatus('Aucun widget sélectionné.', 'error'); return; }
 
-            var tone = $('#aicf-tone').val();
-            var headingStyle = $('#aicf-heading-style').val();
-
             isGenerating = true;
             currentStep = 'generating';
             setStatus(config.i18n.loading + ' (' + selectedWidgets.length + ' widget' + (selectedWidgets.length > 1 ? 's' : '') + ')', 'loading');
@@ -918,9 +888,7 @@
                 body: JSON.stringify({
                     page_id: cachedPageId,
                     user_prompt: prompt,
-                    widgets: selectedWidgets,
-                    tone: tone,
-                    heading_style: headingStyle
+                    widgets: selectedWidgets
                 })
             })
             .then(function (response) {
