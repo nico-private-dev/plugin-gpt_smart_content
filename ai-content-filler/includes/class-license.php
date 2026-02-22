@@ -19,8 +19,8 @@ class AICF_License {
      */
     public static function is_pro() {
         // Vérifier via Freemius si le SDK est disponible
-        if ( function_exists( 'aicf_fs' ) && aicf_fs() !== null ) {
-            return aicf_fs()->is_plan( 'pro' ) || aicf_fs()->is_trial();
+        if ( function_exists( 'tex_fs' ) && tex_fs() !== null ) {
+            return tex_fs()->is_plan( 'pro' ) || tex_fs()->is_trial();
         }
 
         // Fallback : vérifier un filtre custom (utile pour le dev/test)
@@ -33,8 +33,8 @@ class AICF_License {
      * @return string
      */
     public static function get_upgrade_url() {
-        if ( function_exists( 'aicf_fs' ) && aicf_fs() !== null ) {
-            return aicf_fs()->get_upgrade_url();
+        if ( function_exists( 'tex_fs' ) && tex_fs() !== null ) {
+            return tex_fs()->get_upgrade_url();
         }
 
         // URL par défaut si Freemius n'est pas configuré
