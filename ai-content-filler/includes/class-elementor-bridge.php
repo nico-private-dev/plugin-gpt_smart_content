@@ -82,6 +82,18 @@ class AICF_Elementor_Bridge {
      * @return WP_REST_Response|WP_Error
      */
     public function handle_generate_request( WP_REST_Request $request ) {
+        // --- Limite quotidienne (plan gratuit) ---
+        if ( AICF_License::is_daily_limit_reached() ) {
+            return new WP_Error(
+                'aicf_daily_limit',
+                sprintf(
+                    __( 'Limite quotidienne atteinte (%d générations/jour en plan gratuit). Passez en Pro pour des générations illimitées.', 'ai-content-filler' ),
+                    AICF_License::FREE_DAILY_LIMIT
+                ),
+                array( 'status' => 429 )
+            );
+        }
+
         // --- Rate limiting ---
         $user_id        = get_current_user_id();
         $transient_key  = self::RATE_LIMIT_PREFIX . $user_id;
@@ -142,6 +154,22 @@ class AICF_Elementor_Bridge {
             );
         }
 
+        // --- Filtrage des widgets selon le plan (gratuit = types limités) ---
+        if ( ! aicf_is_pro() ) {
+            $allowed = AICF_License::FREE_WIDGETS;
+            $widgets = array_values( array_filter( $widgets, function( $w ) use ( $allowed ) {
+                return in_array( $w['type'], $allowed, true );
+            } ) );
+
+            if ( empty( $widgets ) ) {
+                return new WP_Error(
+                    'aicf_pro_widgets_only',
+                    __( 'Les types de widgets sélectionnés sont réservés au plan Pro.', 'ai-content-filler' ),
+                    array( 'status' => 403 )
+                );
+            }
+        }
+
         // --- Appel à l'API IA (ton et style lus depuis les réglages) ---
         $api_handler = new AICF_API_Handler();
         $result      = $api_handler->generate_content( $user_prompt, $widgets, $page_id );
@@ -152,9 +180,13 @@ class AICF_Elementor_Bridge {
             return $result;
         }
 
+        // Incrémenter le compteur quotidien (plan gratuit)
+        AICF_License::increment_daily_count();
+
         return new WP_REST_Response( array(
-            'success' => true,
-            'widgets' => $result,
+            'success'          => true,
+            'widgets'          => $result,
+            'dailyRemaining'   => AICF_License::get_remaining_generations(),
         ), 200 );
     }
 
@@ -179,20 +211,31 @@ class AICF_Elementor_Bridge {
             true
         );
 
-        // Variables JS (nonce, URL API, etc.) — jamais la clé API !
+        // Variables JS (nonce, URL API, licence, etc.) — jamais la clé API !
+        $is_pro = aicf_is_pro();
         wp_localize_script( 'aicf-editor-panel', 'aicfConfig', array(
-            'restUrl'  => esc_url_raw( rest_url( self::REST_NAMESPACE . '/generate' ) ),
-            'nonce'    => wp_create_nonce( 'wp_rest' ),
-            'i18n'     => array(
-                'idle'          => __( 'Prêt à générer', 'ai-content-filler' ),
-                'loading'       => __( 'Génération en cours...', 'ai-content-filler' ),
-                'success'       => __( 'Contenu généré avec succès !', 'ai-content-filler' ),
-                'error'         => __( 'Erreur', 'ai-content-filler' ),
-                'no_widgets'    => __( 'Aucun widget avec du contenu texte trouvé sur cette page.', 'ai-content-filler' ),
-                'empty_prompt'  => __( 'Veuillez saisir un prompt.', 'ai-content-filler' ),
-                'no_api_key'    => __( 'Configurez votre clé API dans Réglages > AI Content Filler.', 'ai-content-filler' ),
-                'rate_limited'  => __( 'Veuillez patienter quelques secondes avant de relancer.', 'ai-content-filler' ),
-                'save_reminder' => __( 'N\'oubliez pas de sauvegarder la page avec le bouton Elementor.', 'ai-content-filler' ),
+            'restUrl'    => esc_url_raw( rest_url( self::REST_NAMESPACE . '/generate' ) ),
+            'nonce'      => wp_create_nonce( 'wp_rest' ),
+            'isPro'      => $is_pro,
+            'upgradeUrl' => esc_url_raw( AICF_License::get_upgrade_url() ),
+            'freeWidgets'    => $is_pro ? array() : AICF_License::FREE_WIDGETS,
+            'freeTemplates'  => $is_pro ? array() : AICF_License::FREE_TEMPLATES,
+            'dailyRemaining' => AICF_License::get_remaining_generations(),
+            'dailyLimit'     => $is_pro ? -1 : AICF_License::FREE_DAILY_LIMIT,
+            'i18n'       => array(
+                'idle'           => __( 'Prêt à générer', 'ai-content-filler' ),
+                'loading'        => __( 'Génération en cours...', 'ai-content-filler' ),
+                'success'        => __( 'Contenu généré avec succès !', 'ai-content-filler' ),
+                'error'          => __( 'Erreur', 'ai-content-filler' ),
+                'no_widgets'     => __( 'Aucun widget avec du contenu texte trouvé sur cette page.', 'ai-content-filler' ),
+                'empty_prompt'   => __( 'Veuillez saisir un prompt.', 'ai-content-filler' ),
+                'no_api_key'     => __( 'Configurez votre clé API dans Réglages > AI Content Filler.', 'ai-content-filler' ),
+                'rate_limited'   => __( 'Veuillez patienter quelques secondes avant de relancer.', 'ai-content-filler' ),
+                'save_reminder'  => __( 'N\'oubliez pas de sauvegarder la page avec le bouton Elementor.', 'ai-content-filler' ),
+                'daily_limit'    => __( 'Limite quotidienne atteinte. Revenez demain ou passez en Pro.', 'ai-content-filler' ),
+                'pro_feature'    => __( 'Fonctionnalité Pro', 'ai-content-filler' ),
+                'upgrade'        => __( 'Passer en Pro', 'ai-content-filler' ),
+                'pro_widget'     => __( 'Ce type de widget est réservé au plan Pro.', 'ai-content-filler' ),
             ),
         ) );
     }

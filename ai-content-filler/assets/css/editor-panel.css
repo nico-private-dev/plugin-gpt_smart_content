@@ -630,3 +630,98 @@
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* ==============================================================
+   Plan badge (FREE / PRO)
+   ============================================================== */
+
+.aicf-plan-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-left: 6px;
+    line-height: 1.4;
+}
+
+.aicf-plan-free {
+    background: rgba(255, 255, 255, 0.25);
+    color: #fff;
+}
+
+.aicf-plan-pro {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #fff;
+}
+
+/* ==============================================================
+   Daily generation limit counter
+   ============================================================== */
+
+.aicf-daily-limit {
+    padding: 6px 10px;
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 5px;
+    font-size: 11px;
+    color: #6b7280;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.aicf-daily-limit-low {
+    background: #fffbeb;
+    border-color: #fde68a;
+    color: #92400e;
+}
+
+.aicf-daily-limit-reached {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #dc2626;
+}
+
+/* ==============================================================
+   Locked template buttons
+   ============================================================== */
+
+.aicf-tpl-btn.aicf-tpl-locked {
+    opacity: 0.5;
+    border-style: dashed;
+    cursor: not-allowed;
+}
+
+.aicf-tpl-btn.aicf-tpl-locked:hover {
+    background: #f3f4f6;
+    border-color: #d1d5db;
+    color: #9ca3af;
+}
+
+/* ==============================================================
+   Locked widget items (Pro-only widgets)
+   ============================================================== */
+
+.aicf-wl-item-locked {
+    opacity: 0.5;
+}
+
+.aicf-wl-item-locked .aicf-wl-preview {
+    color: #d1d5db;
+    font-style: italic;
+}
+
+.aicf-wl-pro-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #fff;
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    padding: 1px 5px;
+    border-radius: 2px;
+    vertical-align: middle;
+    margin-left: 3px;
+}
