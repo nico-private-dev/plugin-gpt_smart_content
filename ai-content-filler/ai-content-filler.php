@@ -53,6 +53,10 @@ final class AI_Content_Filler {
      * Charge les fichiers de classes nécessaires.
      */
     private function load_dependencies() {
+        // Licence et feature gating (doit être chargé en premier)
+        require_once AICF_PLUGIN_DIR . 'includes/class-license.php';
+        require_once AICF_PLUGIN_DIR . 'includes/freemius-init.php';
+
         require_once AICF_PLUGIN_DIR . 'includes/class-settings.php';
         require_once AICF_PLUGIN_DIR . 'includes/class-api-handler.php';
         require_once AICF_PLUGIN_DIR . 'includes/class-elementor-bridge.php';

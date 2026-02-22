@@ -371,3 +371,51 @@
     transform: scale(1.1);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
+
+/* ------ Pro badge ------ */
+.aicf-pro-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-left: 6px;
+    line-height: 1.4;
+}
+
+/* ------ Upgrade link ------ */
+.aicf-upgrade-link {
+    color: #7c3aed !important;
+    font-weight: 600;
+    text-decoration: none !important;
+    margin-left: 4px;
+}
+
+.aicf-upgrade-link:hover {
+    color: #4f46e5 !important;
+    text-decoration: underline !important;
+}
+
+/* ------ Notice upgrade (Free plan) ------ */
+.aicf-notice-upgrade {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border-left: 4px solid #f59e0b;
+    color: #92400e;
+}
+
+.aicf-notice-upgrade-content {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+/* ------ Pro locked state ------ */
+.aicf-pro-locked {
+    opacity: 0.5;
+    pointer-events: none;
+}

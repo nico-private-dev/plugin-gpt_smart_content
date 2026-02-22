@@ -320,6 +320,29 @@ class AICF_Settings {
     // Rendus des champs
     // ------------------------------------------------------------------
 
+    /**
+     * Retourne le badge HTML "PRO" pour les champs réservés au plan payant.
+     */
+    private static function pro_badge() {
+        if ( aicf_is_pro() ) {
+            return '';
+        }
+        return ' <span class="aicf-pro-badge">PRO</span>';
+    }
+
+    /**
+     * Retourne le lien d'upgrade HTML.
+     */
+    private static function upgrade_link( $text = '' ) {
+        if ( aicf_is_pro() ) {
+            return '';
+        }
+        if ( empty( $text ) ) {
+            $text = __( 'Passer en Pro', 'ai-content-filler' );
+        }
+        return ' <a href="' . esc_url( AICF_License::get_upgrade_url() ) . '" class="aicf-upgrade-link">' . esc_html( $text ) . ' &rarr;</a>';
+    }
+
     public function render_provider_field() {
         $value     = self::get_provider();
         $providers = array(
@@ -426,6 +449,8 @@ class AICF_Settings {
 
     public function render_language_field() {
         $value     = self::get_language();
+        $is_pro    = aicf_is_pro();
+        $free_langs = AICF_License::FREE_LANGUAGES;
         $languages = array(
             'fr' => '🇫🇷 Français',
             'en' => '🇬🇧 English',
@@ -438,15 +463,27 @@ class AICF_Settings {
         );
         echo '<select id="' . esc_attr( self::OPTION_PREFIX . 'language' ) . '" name="' . esc_attr( self::OPTION_PREFIX . 'language' ) . '" class="regular-text">';
         foreach ( $languages as $code => $label ) {
+            $disabled = '';
+            $pro_label = '';
+            if ( ! $is_pro && ! in_array( $code, $free_langs, true ) ) {
+                $disabled  = ' disabled="disabled"';
+                $pro_label = ' (Pro)';
+            }
             printf(
-                '<option value="%s" %s>%s</option>',
+                '<option value="%s" %s%s>%s%s</option>',
                 esc_attr( $code ),
                 selected( $value, $code, false ),
-                esc_html( $label )
+                $disabled,
+                esc_html( $label ),
+                esc_html( $pro_label )
             );
         }
         echo '</select>';
-        echo '<p class="description">' . esc_html__( 'Langue par défaut du contenu généré. L\'utilisateur peut la surcharger dans son prompt.', 'ai-content-filler' ) . '</p>';
+        if ( ! $is_pro ) {
+            echo '<p class="description">' . esc_html__( 'Français et anglais en version gratuite.', 'ai-content-filler' ) . self::upgrade_link( __( 'Débloquer toutes les langues', 'ai-content-filler' ) ) . '</p>';
+        } else {
+            echo '<p class="description">' . esc_html__( 'Langue par défaut du contenu généré. L\'utilisateur peut la surcharger dans son prompt.', 'ai-content-filler' ) . '</p>';
+        }
     }
 
     public function render_temperature_field() {
@@ -484,16 +521,18 @@ class AICF_Settings {
     }
 
     public function render_brief_file_field() {
+        $is_pro        = aicf_is_pro();
         $attachment_id = absint( get_option( self::OPTION_PREFIX . 'brief_attachment_id', 0 ) );
-        $info          = self::get_brief_attachment_info();
+        $info          = $is_pro ? self::get_brief_attachment_info() : null;
         ?>
-        <div class="aicf-file-upload-wrap">
+        <div class="aicf-file-upload-wrap <?php echo $is_pro ? '' : 'aicf-pro-locked'; ?>">
             <input
                 type="hidden"
                 id="<?php echo esc_attr( self::OPTION_PREFIX . 'brief_attachment_id' ); ?>"
                 name="<?php echo esc_attr( self::OPTION_PREFIX . 'brief_attachment_id' ); ?>"
-                value="<?php echo esc_attr( $attachment_id ); ?>"
+                value="<?php echo esc_attr( $is_pro ? $attachment_id : 0 ); ?>"
             />
+            <?php if ( $is_pro ) : ?>
             <div class="aicf-file-preview <?php echo $info ? '' : 'aicf-file-empty'; ?>" id="aicf-file-preview" <?php echo $info ? '' : 'style="display:none;"'; ?>>
                 <?php if ( $info ) : ?>
                 <span class="aicf-file-icon">📄</span>
@@ -505,21 +544,27 @@ class AICF_Settings {
             <button type="button" class="button aicf-select-file" id="aicf-select-file-btn">
                 📎 <?php esc_html_e( 'Choisir un fichier (PDF, TXT, MD)', 'ai-content-filler' ); ?>
             </button>
+            <p class="description"><?php esc_html_e( 'Importez un fichier de brief. Son contenu sera extrait et combiné avec le brief textuel ci-dessus.', 'ai-content-filler' ); ?></p>
+            <?php else : ?>
+            <p class="description"><?php echo self::pro_badge() . ' ' . esc_html__( 'Importez un brief au format PDF, TXT ou MD.', 'ai-content-filler' ) . self::upgrade_link(); ?></p>
+            <?php endif; ?>
         </div>
-        <p class="description"><?php esc_html_e( 'Importez un fichier de brief. Son contenu sera extrait et combiné avec le brief textuel ci-dessus.', 'ai-content-filler' ); ?></p>
         <?php
     }
 
     public function render_tone_field() {
-        $value = self::get_tone();
-        $tones = array(
+        $value  = self::get_tone();
+        $is_pro = aicf_is_pro();
+        $tones  = array(
             ''             => __( 'Par défaut (neutre)', 'ai-content-filler' ),
             'professional' => __( 'Professionnel — sérieux, rassurant', 'ai-content-filler' ),
             'casual'       => __( 'Décontracté — amical, accessible', 'ai-content-filler' ),
             'commercial'   => __( 'Commercial — persuasif, orienté bénéfices', 'ai-content-filler' ),
             'technical'    => __( 'Technique — expert, précis', 'ai-content-filler' ),
         );
-        echo '<select id="' . esc_attr( self::OPTION_PREFIX . 'tone' ) . '" name="' . esc_attr( self::OPTION_PREFIX . 'tone' ) . '" class="regular-text">';
+
+        $disabled_attr = $is_pro ? '' : ' disabled="disabled"';
+        echo '<select id="' . esc_attr( self::OPTION_PREFIX . 'tone' ) . '" name="' . esc_attr( self::OPTION_PREFIX . 'tone' ) . '" class="regular-text"' . $disabled_attr . '>';
         foreach ( $tones as $code => $label ) {
             printf(
                 '<option value="%s" %s>%s</option>',
@@ -529,18 +574,28 @@ class AICF_Settings {
             );
         }
         echo '</select>';
-        echo '<p class="description">' . esc_html__( 'Le ton sera appliqué à tout le contenu généré sur le site.', 'ai-content-filler' ) . '</p>';
+        if ( ! $is_pro ) {
+            // Champ caché pour conserver la valeur par défaut
+            echo '<input type="hidden" name="' . esc_attr( self::OPTION_PREFIX . 'tone' ) . '" value="" />';
+            echo self::pro_badge();
+            echo '<p class="description">' . esc_html__( 'Personnalisez le ton rédactionnel du contenu.', 'ai-content-filler' ) . self::upgrade_link() . '</p>';
+        } else {
+            echo '<p class="description">' . esc_html__( 'Le ton sera appliqué à tout le contenu généré sur le site.', 'ai-content-filler' ) . '</p>';
+        }
     }
 
     public function render_heading_style_field() {
         $value   = self::get_heading_style();
+        $is_pro  = aicf_is_pro();
         $styles  = array(
             'none'      => __( 'Normal — texte brut', 'ai-content-filler' ),
             'highlight' => __( 'Surlignement — effet marqueur sur les mots-clés', 'ai-content-filler' ),
             'underline' => __( 'Soulignement — trait d\'accent sous les mots-clés', 'ai-content-filler' ),
             'color'     => __( 'Couleur — mots-clés en couleur d\'accent', 'ai-content-filler' ),
         );
-        echo '<select id="' . esc_attr( self::OPTION_PREFIX . 'heading_style' ) . '" name="' . esc_attr( self::OPTION_PREFIX . 'heading_style' ) . '" class="regular-text">';
+
+        $disabled_attr = $is_pro ? '' : ' disabled="disabled"';
+        echo '<select id="' . esc_attr( self::OPTION_PREFIX . 'heading_style' ) . '" name="' . esc_attr( self::OPTION_PREFIX . 'heading_style' ) . '" class="regular-text"' . $disabled_attr . '>';
         foreach ( $styles as $code => $label ) {
             printf(
                 '<option value="%s" %s>%s</option>',
@@ -550,14 +605,21 @@ class AICF_Settings {
             );
         }
         echo '</select>';
-        echo '<p class="description">' . esc_html__( 'L\'IA ajoutera du HTML inline sur 1 à 2 mots-clés dans chaque titre pour créer l\'effet choisi.', 'ai-content-filler' ) . '</p>';
+        if ( ! $is_pro ) {
+            echo '<input type="hidden" name="' . esc_attr( self::OPTION_PREFIX . 'heading_style' ) . '" value="none" />';
+            echo self::pro_badge();
+            echo '<p class="description">' . esc_html__( 'Ajoutez des effets visuels sur les mots-clés de vos titres.', 'ai-content-filler' ) . self::upgrade_link() . '</p>';
+        } else {
+            echo '<p class="description">' . esc_html__( 'L\'IA ajoutera du HTML inline sur 1 à 2 mots-clés dans chaque titre pour créer l\'effet choisi.', 'ai-content-filler' ) . '</p>';
+        }
     }
 
     public function render_heading_style_color_field() {
         $value          = self::get_heading_style_color();
+        $is_pro         = aicf_is_pro();
         $global_colors  = self::get_elementor_global_colors();
         ?>
-        <div class="aicf-color-field-wrap">
+        <div class="aicf-color-field-wrap <?php echo $is_pro ? '' : 'aicf-pro-locked'; ?>">
             <input
                 type="text"
                 id="<?php echo esc_attr( self::OPTION_PREFIX . 'heading_style_color' ); ?>"
@@ -565,8 +627,9 @@ class AICF_Settings {
                 value="<?php echo esc_attr( $value ); ?>"
                 class="aicf-color-picker"
                 data-default-color="#6366f1"
+                <?php echo $is_pro ? '' : 'disabled="disabled"'; ?>
             />
-            <?php if ( ! empty( $global_colors ) ) : ?>
+            <?php if ( ! empty( $global_colors ) && $is_pro ) : ?>
             <div class="aicf-global-colors">
                 <span class="aicf-global-colors-label"><?php esc_html_e( 'Couleurs du site (Elementor) :', 'ai-content-filler' ); ?></span>
                 <div class="aicf-global-colors-swatches">
@@ -583,8 +646,11 @@ class AICF_Settings {
             </div>
             <?php endif; ?>
         </div>
-        <p class="description"><?php esc_html_e( 'Couleur utilisée pour le surlignement, soulignement ou coloration des mots-clés dans les titres.', 'ai-content-filler' ); ?></p>
-        <?php
+        <?php if ( ! $is_pro ) : ?>
+            <p class="description"><?php echo self::pro_badge() . ' ' . esc_html__( 'Personnalisez la couleur d\'accent des titres.', 'ai-content-filler' ); ?></p>
+        <?php else : ?>
+            <p class="description"><?php esc_html_e( 'Couleur utilisée pour le surlignement, soulignement ou coloration des mots-clés dans les titres.', 'ai-content-filler' ); ?></p>
+        <?php endif;
     }
 
     // ------------------------------------------------------------------
@@ -663,6 +729,22 @@ class AICF_Settings {
                     <p class="aicf-header-subtitle"><?php esc_html_e( 'Générez du contenu intelligent pour vos pages Elementor', 'ai-content-filler' ); ?></p>
                 </div>
             </div>
+
+            <?php if ( ! aicf_is_pro() ) : ?>
+            <div class="aicf-notice aicf-notice-upgrade">
+                <div class="aicf-notice-upgrade-content">
+                    <strong><?php esc_html_e( 'Version gratuite', 'ai-content-filler' ); ?></strong> —
+                    <?php printf(
+                        /* translators: %d: daily generation limit */
+                        esc_html__( '%d générations/jour, 5 types de widgets, 2 templates. ', 'ai-content-filler' ),
+                        AICF_License::FREE_DAILY_LIMIT
+                    ); ?>
+                    <a href="<?php echo esc_url( AICF_License::get_upgrade_url() ); ?>" class="aicf-upgrade-link">
+                        <?php esc_html_e( 'Passer en Pro pour tout débloquer', 'ai-content-filler' ); ?> &rarr;
+                    </a>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <?php if ( empty( $api_key ) ) :
                 $provider_labels = array( 'anthropic' => 'Anthropic Claude', 'openai' => 'OpenAI', 'deepseek' => 'DeepSeek' );
