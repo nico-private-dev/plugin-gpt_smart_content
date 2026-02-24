@@ -25,6 +25,13 @@ define( 'AICF_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'AICF_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'AICF_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 
+// ---------------------------------------------------------------
+// Freemius SDK — doit être chargé AVANT plugins_loaded pour que
+// le SDK puisse enregistrer ses propres hooks WordPress.
+// ---------------------------------------------------------------
+require_once AICF_PLUGIN_DIR . 'includes/class-license.php';
+require_once AICF_PLUGIN_DIR . 'includes/freemius-init.php';
+
 /**
  * Classe principale du plugin.
  * Orchestre le chargement des composants et vérifie les dépendances.
@@ -53,10 +60,6 @@ final class AI_Content_Filler {
      * Charge les fichiers de classes nécessaires.
      */
     private function load_dependencies() {
-        // Licence et feature gating (doit être chargé en premier)
-        require_once AICF_PLUGIN_DIR . 'includes/class-license.php';
-        require_once AICF_PLUGIN_DIR . 'includes/freemius-init.php';
-
         require_once AICF_PLUGIN_DIR . 'includes/class-settings.php';
         require_once AICF_PLUGIN_DIR . 'includes/class-api-handler.php';
         require_once AICF_PLUGIN_DIR . 'includes/class-elementor-bridge.php';
