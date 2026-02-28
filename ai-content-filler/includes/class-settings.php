@@ -718,8 +718,8 @@ class AICF_Settings {
             <div class="aicf-settings-header">
                 <div class="aicf-header-icon">✨</div>
                 <div>
-                    <h1 class="aicf-header-title"><?php esc_html_e( 'AI Content Filler', 'ai-content-filler' ); ?></h1>
-                    <p class="aicf-header-subtitle"><?php esc_html_e( 'Générez du contenu intelligent pour vos pages Elementor', 'ai-content-filler' ); ?></p>
+                    <h1 class="aicf-header-title"><?php esc_html_e( 'TextFlow', 'ai-content-filler' ); ?></h1>
+                    <p class="aicf-header-subtitle"><?php esc_html_e( 'Générez du contenu intelligent pour vos pages Elementor et Gutenberg', 'ai-content-filler' ); ?></p>
                 </div>
             </div>
 
