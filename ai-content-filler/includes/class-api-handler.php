@@ -46,15 +46,16 @@ class AICF_API_Handler {
      */
     private static $widget_types = array(
         // --- Blocs natifs WordPress (Gutenberg) ---
-        'core/heading'            => 'titre court et percutant, 5-8 mots max',
-        'core/paragraph'          => 'un ou plusieurs paragraphes en HTML valide (<p>, <strong>, <em>)',
-        'core/button'             => 'texte de bouton, appel à l\'action court (2-5 mots)',
-        'core/image'              => 'texte alternatif descriptif et légende courte',
-        'core/quote'              => 'citation percutante et auteur crédible',
+        // IMPORTANT : Gutenberg gère lui-même les balises englobantes — ne PAS les inclure dans la réponse
+        'core/heading'            => 'titre court et percutant 5-8 mots, texte brut ou inline <strong>/<em> uniquement — SANS balise <h*>',
+        'core/paragraph'          => 'texte avec balises inline (<strong>, <em>) — SANS balise <p> englobante',
+        'core/button'             => 'texte de bouton brut, appel à l\'action 2-5 mots, sans aucune balise HTML',
+        'core/image'              => 'texte alternatif descriptif (texte brut sans HTML)',
+        'core/quote'              => 'auteur de la citation (texte brut, prénom nom)',
         // --- Kadence Blocks ---
-        'kadence/advancedheading' => 'titre court et percutant, 5-8 mots max',
-        'kadence/infobox'         => 'titre court + texte descriptif HTML + texte de bouton court',
-        'kadence/singlebtn'       => 'texte de bouton, appel à l\'action court (2-5 mots)',
+        'kadence/advancedheading' => 'titre court et percutant 5-8 mots, texte brut ou inline <strong>/<em> — SANS balise <h*>',
+        'kadence/infobox'         => 'titre court (texte brut) + texte descriptif avec inline HTML + texte de bouton brut',
+        'kadence/singlebtn'       => 'texte de bouton brut 2-5 mots, sans aucune balise HTML',
         'kadence/testimonials'    => 'témoignages clients réalistes (contenu, prénom/nom, poste)',
         'kadence/pane'            => 'titre d\'accordéon court formulé comme une question claire',
         'kadence/tab'             => 'titre d\'onglet court et descriptif (2-4 mots)',
@@ -210,7 +211,11 @@ class AICF_API_Handler {
         $heading_style = AICF_Settings::get_heading_style();
         $heading_color = AICF_Settings::get_heading_style_color();
 
-        $system = "Tu es un rédacteur web professionnel. Tu rédiges du contenu pour des sites web créés avec WordPress et Elementor.\n\n";
+        // LANGUE — en premier, instruction non négociable
+        $system  = "LANGUE DE RÉDACTION OBLIGATOIRE : " . strtoupper( $lang_name ) . "\n";
+        $system .= "Tu dois rédiger TOUT le contenu généré en " . $lang_name . ". Cette règle est absolue et prime sur la langue du prompt ou du brief. Le prompt peut être dans n'importe quelle langue, le contenu final doit toujours être en " . $lang_name . ".\n\n";
+
+        $system .= "Tu es un rédacteur web professionnel. Tu rédiges du contenu pour des sites web créés avec WordPress et Elementor.\n\n";
 
         if ( ! empty( $brief ) ) {
             $system .= "BRIEF CLIENT :\n" . $brief . "\n\n";
@@ -250,7 +255,7 @@ class AICF_API_Handler {
         $system .= "- Réponds UNIQUEMENT avec un objet JSON valide, sans texte avant ni après.\n";
         $system .= "- Format de réponse obligatoire : {\"widgets\": [{\"id\": \"ID_DU_WIDGET\", \"content\": {\"clé_du_champ\": \"CONTENU_GENERE\", ...}}, ...]}\n";
         $system .= "- N'invente pas de widgets ni de champs supplémentaires, traite uniquement ceux fournis.\n";
-        $system .= "- Rédige en " . $lang_name . " sauf si le prompt de l'utilisateur indique explicitement une autre langue.\n";
+        $system .= "- RAPPEL FINAL : tout le contenu généré doit être en " . $lang_name . ", sans exception.\n";
 
         return $system;
     }

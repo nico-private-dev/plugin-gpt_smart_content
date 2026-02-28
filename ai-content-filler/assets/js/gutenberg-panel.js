@@ -173,15 +173,46 @@
     }
 
     /**
+     * Nettoie la valeur d'un champ selon le type de bloc pour éviter les erreurs
+     * de validation Gutenberg (ex: double <p> dans core/paragraph).
+     *
+     * Gutenberg stocke uniquement le contenu INTÉRIEUR dans l'attribut :
+     *   core/paragraph.content  → pas de <p> englobant
+     *   core/heading.content    → pas de <h*> englobant
+     *   core/button.text        → texte brut
+     */
+    function sanitizeForBlock( blockType, fieldKey, value ) {
+        if ( typeof value !== 'string' ) return value;
+
+        if ( blockType === 'core/paragraph' && fieldKey === 'content' ) {
+            // Supprimer la balise <p> englobante si présente
+            return value.replace( /^<p[^>]*>([\s\S]*?)<\/p>\s*$/i, '$1' ).trim();
+        }
+
+        if ( blockType === 'core/heading' && fieldKey === 'content' ) {
+            // Supprimer la balise <h1-6> englobante si présente
+            return value.replace( /^<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>\s*$/i, '$1' ).trim();
+        }
+
+        if ( ( blockType === 'core/button' || blockType === 'kadence/singlebtn' ) && fieldKey === 'text' ) {
+            // Texte brut pour les boutons, supprimer toute balise englobante
+            return value.replace( /<[^>]+>/g, '' ).trim();
+        }
+
+        return value;
+    }
+
+    /**
      * Applique le contenu généré aux blocs Gutenberg.
-     * @param {Array} widgets - Tableau de { id, content: {} }
+     * @param {Array} widgets - Tableau de { id, type, content: {} }
      */
     function applyContent( widgets ) {
         var dispatch = wp.data.dispatch( 'core/block-editor' );
         var select   = wp.data.select( 'core/block-editor' );
 
         widgets.forEach( function ( widget ) {
-            var content = widget.content;
+            var content   = widget.content;
+            var blockType = widget.type || '';
 
             // Rétrocompatibilité : content peut être une string
             if ( typeof content === 'string' ) {
@@ -196,7 +227,7 @@
             // Séparer champs directs vs champs repeater (notation pointée)
             Object.keys( content ).forEach( function ( key ) {
                 if ( key.indexOf( '.' ) === -1 ) {
-                    directAttrs[ key ] = content[ key ];
+                    directAttrs[ key ] = sanitizeForBlock( blockType, key, content[ key ] );
                 } else {
                     var parts  = key.split( '.' );
                     var repKey = parts[ 0 ];
@@ -213,9 +244,29 @@
                 }
             } );
 
+            // Blocs RichText : le composant React garde un état interne qui ne se
+            // réinitialise pas avec updateBlockAttributes() seul → on utilise
+            // replaceBlock() avec un clone pour forcer la réinstanciation.
+            var RICH_TEXT_BLOCKS = [
+                'core/paragraph',
+                'core/heading',
+                'core/quote',
+                'kadence/advancedheading',
+            ];
+
             // Appliquer les champs directs
             if ( Object.keys( directAttrs ).length > 0 ) {
-                dispatch.updateBlockAttributes( widget.id, directAttrs );
+                if ( RICH_TEXT_BLOCKS.indexOf( blockType ) !== -1 ) {
+                    var block = select.getBlock( widget.id );
+                    if ( block && wp.blocks && wp.blocks.cloneBlock ) {
+                        var newBlock = wp.blocks.cloneBlock( block, directAttrs );
+                        dispatch.replaceBlock( widget.id, newBlock );
+                    } else {
+                        dispatch.updateBlockAttributes( widget.id, directAttrs );
+                    }
+                } else {
+                    dispatch.updateBlockAttributes( widget.id, directAttrs );
+                }
             }
 
             // Appliquer les repeaters

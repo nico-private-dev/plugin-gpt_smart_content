@@ -3,7 +3,7 @@
  * Plugin Name: AI Content Filler
  * Plugin URI:  https://example.com/ai-content-filler
  * Description: Génère automatiquement le contenu des widgets Elementor (Heading, Text Editor) via l'API Claude d'Anthropic.
- * Version:     1.0.1
+ * Version:     1.0.5
  * Author:      AI Content Filler
  * Author URI:  https://example.com
  * License:     GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Constantes du plugin
-define( 'AICF_VERSION', '1.0.1' );
+define( 'AICF_VERSION', '1.0.5' );
 define( 'AICF_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'AICF_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'AICF_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
