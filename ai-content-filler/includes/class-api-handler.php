@@ -394,7 +394,12 @@ class AICF_API_Handler {
 
             return new WP_Error(
                 'aicf_api_error',
-                sprintf( __( 'API Anthropic (HTTP %d) : %s', 'ai-content-filler' ), $status_code, $error_msg ),
+                sprintf(
+                    /* translators: %1$d: HTTP status code, %2$s: error message from the API */
+                    __( 'API Anthropic (HTTP %1$d) : %2$s', 'ai-content-filler' ),
+                    $status_code,
+                    $error_msg
+                ),
                 array( 'status' => $status_code )
             );
         }
@@ -477,7 +482,12 @@ class AICF_API_Handler {
 
             return new WP_Error(
                 'aicf_api_error',
-                sprintf( __( 'API (HTTP %d) : %s', 'ai-content-filler' ), $status_code, $error_msg ),
+                sprintf(
+                    /* translators: %1$d: HTTP status code, %2$s: error message from the API */
+                    __( 'API (HTTP %1$d) : %2$s', 'ai-content-filler' ),
+                    $status_code,
+                    $error_msg
+                ),
                 array( 'status' => $status_code )
             );
         }
@@ -658,6 +668,7 @@ class AICF_API_Handler {
         return new WP_Error(
             'aicf_invalid_json',
             sprintf(
+                /* translators: %s: beginning of the AI response that could not be parsed as JSON */
                 __( 'Impossible d\'extraire un JSON valide de la réponse de l\'IA. Début de la réponse : "%s"', 'ai-content-filler' ),
                 $preview
             ),

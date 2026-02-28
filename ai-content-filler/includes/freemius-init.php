@@ -8,16 +8,16 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-if ( ! function_exists( 'tex_fs' ) ) {
+if ( ! function_exists( 'aicf_fs' ) ) {
     // Create a helper function for easy SDK access.
-    function tex_fs() {
-        global $tex_fs;
+    function aicf_fs() {
+        global $aicf_fs;
 
-        if ( ! isset( $tex_fs ) ) {
+        if ( ! isset( $aicf_fs ) ) {
             // Include Freemius SDK.
             require_once dirname( __FILE__ ) . '/../vendor/freemius/start.php';
 
-            $tex_fs = fs_dynamic_init( array(
+            $aicf_fs = fs_dynamic_init( array(
                 'id'                  => '24812',
                 'slug'                => 'textflow',
                 'type'                => 'plugin',
@@ -46,11 +46,11 @@ if ( ! function_exists( 'tex_fs' ) ) {
             ) );
         }
 
-        return $tex_fs;
+        return $aicf_fs;
     }
 
     // Init Freemius.
-    tex_fs();
+    aicf_fs();
     // Signal that SDK was initiated.
-    do_action( 'tex_fs_loaded' );
+    do_action( 'aicf_fs_loaded' );
 }

@@ -463,24 +463,19 @@ class AICF_Settings {
         );
         echo '<select id="' . esc_attr( self::OPTION_PREFIX . 'language' ) . '" name="' . esc_attr( self::OPTION_PREFIX . 'language' ) . '" class="regular-text">';
         foreach ( $languages as $code => $label ) {
-            $disabled = '';
-            $pro_label = '';
-            if ( ! $is_pro && ! in_array( $code, $free_langs, true ) ) {
-                $disabled  = ' disabled="disabled"';
-                $pro_label = ' (Pro)';
-            }
+            $is_locked = ! $is_pro && ! in_array( $code, $free_langs, true );
             printf(
                 '<option value="%s" %s%s>%s%s</option>',
                 esc_attr( $code ),
                 selected( $value, $code, false ),
-                $disabled,
+                $is_locked ? 'disabled="disabled"' : '',
                 esc_html( $label ),
-                esc_html( $pro_label )
+                $is_locked ? esc_html( ' (Pro)' ) : ''
             );
         }
         echo '</select>';
         if ( ! $is_pro ) {
-            echo '<p class="description">' . esc_html__( 'Français et anglais en version gratuite.', 'ai-content-filler' ) . self::upgrade_link( __( 'Débloquer toutes les langues', 'ai-content-filler' ) ) . '</p>';
+            echo '<p class="description">' . esc_html__( 'Français et anglais en version gratuite.', 'ai-content-filler' ) . wp_kses_post( self::upgrade_link( __( 'Débloquer toutes les langues', 'ai-content-filler' ) ) ) . '</p>';
         } else {
             echo '<p class="description">' . esc_html__( 'Langue par défaut du contenu généré. L\'utilisateur peut la surcharger dans son prompt.', 'ai-content-filler' ) . '</p>';
         }
@@ -546,7 +541,7 @@ class AICF_Settings {
             </button>
             <p class="description"><?php esc_html_e( 'Importez un fichier de brief. Son contenu sera extrait et combiné avec le brief textuel ci-dessus.', 'ai-content-filler' ); ?></p>
             <?php else : ?>
-            <p class="description"><?php echo self::pro_badge() . ' ' . esc_html__( 'Importez un brief au format PDF, TXT ou MD.', 'ai-content-filler' ) . self::upgrade_link(); ?></p>
+            <p class="description"><?php echo wp_kses_post( self::pro_badge() ) . ' ' . esc_html__( 'Importez un brief au format PDF, TXT ou MD.', 'ai-content-filler' ) . wp_kses_post( self::upgrade_link() ); ?></p>
             <?php endif; ?>
         </div>
         <?php
@@ -563,8 +558,7 @@ class AICF_Settings {
             'technical'    => __( 'Technique — expert, précis', 'ai-content-filler' ),
         );
 
-        $disabled_attr = $is_pro ? '' : ' disabled="disabled"';
-        echo '<select id="' . esc_attr( self::OPTION_PREFIX . 'tone' ) . '" name="' . esc_attr( self::OPTION_PREFIX . 'tone' ) . '" class="regular-text"' . $disabled_attr . '>';
+        echo '<select id="' . esc_attr( self::OPTION_PREFIX . 'tone' ) . '" name="' . esc_attr( self::OPTION_PREFIX . 'tone' ) . '" class="regular-text"' . ( $is_pro ? '' : ' disabled="disabled"' ) . '>';
         foreach ( $tones as $code => $label ) {
             printf(
                 '<option value="%s" %s>%s</option>',
@@ -577,8 +571,8 @@ class AICF_Settings {
         if ( ! $is_pro ) {
             // Champ caché pour conserver la valeur par défaut
             echo '<input type="hidden" name="' . esc_attr( self::OPTION_PREFIX . 'tone' ) . '" value="" />';
-            echo self::pro_badge();
-            echo '<p class="description">' . esc_html__( 'Personnalisez le ton rédactionnel du contenu.', 'ai-content-filler' ) . self::upgrade_link() . '</p>';
+            echo wp_kses_post( self::pro_badge() );
+            echo '<p class="description">' . esc_html__( 'Personnalisez le ton rédactionnel du contenu.', 'ai-content-filler' ) . wp_kses_post( self::upgrade_link() ) . '</p>';
         } else {
             echo '<p class="description">' . esc_html__( 'Le ton sera appliqué à tout le contenu généré sur le site.', 'ai-content-filler' ) . '</p>';
         }
@@ -594,8 +588,7 @@ class AICF_Settings {
             'color'     => __( 'Couleur — mots-clés en couleur d\'accent', 'ai-content-filler' ),
         );
 
-        $disabled_attr = $is_pro ? '' : ' disabled="disabled"';
-        echo '<select id="' . esc_attr( self::OPTION_PREFIX . 'heading_style' ) . '" name="' . esc_attr( self::OPTION_PREFIX . 'heading_style' ) . '" class="regular-text"' . $disabled_attr . '>';
+        echo '<select id="' . esc_attr( self::OPTION_PREFIX . 'heading_style' ) . '" name="' . esc_attr( self::OPTION_PREFIX . 'heading_style' ) . '" class="regular-text"' . ( $is_pro ? '' : ' disabled="disabled"' ) . '>';
         foreach ( $styles as $code => $label ) {
             printf(
                 '<option value="%s" %s>%s</option>',
@@ -607,8 +600,8 @@ class AICF_Settings {
         echo '</select>';
         if ( ! $is_pro ) {
             echo '<input type="hidden" name="' . esc_attr( self::OPTION_PREFIX . 'heading_style' ) . '" value="none" />';
-            echo self::pro_badge();
-            echo '<p class="description">' . esc_html__( 'Ajoutez des effets visuels sur les mots-clés de vos titres.', 'ai-content-filler' ) . self::upgrade_link() . '</p>';
+            echo wp_kses_post( self::pro_badge() );
+            echo '<p class="description">' . esc_html__( 'Ajoutez des effets visuels sur les mots-clés de vos titres.', 'ai-content-filler' ) . wp_kses_post( self::upgrade_link() ) . '</p>';
         } else {
             echo '<p class="description">' . esc_html__( 'L\'IA ajoutera du HTML inline sur 1 à 2 mots-clés dans chaque titre pour créer l\'effet choisi.', 'ai-content-filler' ) . '</p>';
         }
@@ -619,7 +612,7 @@ class AICF_Settings {
         $is_pro         = aicf_is_pro();
         $global_colors  = self::get_elementor_global_colors();
         ?>
-        <div class="aicf-color-field-wrap <?php echo $is_pro ? '' : 'aicf-pro-locked'; ?>">
+        <div class="aicf-color-field-wrap <?php echo $is_pro ? '' : esc_attr( 'aicf-pro-locked' ); ?>">
             <input
                 type="text"
                 id="<?php echo esc_attr( self::OPTION_PREFIX . 'heading_style_color' ); ?>"
@@ -647,7 +640,7 @@ class AICF_Settings {
             <?php endif; ?>
         </div>
         <?php if ( ! $is_pro ) : ?>
-            <p class="description"><?php echo self::pro_badge() . ' ' . esc_html__( 'Personnalisez la couleur d\'accent des titres.', 'ai-content-filler' ); ?></p>
+            <p class="description"><?php echo wp_kses_post( self::pro_badge() ) . ' ' . esc_html__( 'Personnalisez la couleur d\'accent des titres.', 'ai-content-filler' ); ?></p>
         <?php else : ?>
             <p class="description"><?php esc_html_e( 'Couleur utilisée pour le surlignement, soulignement ou coloration des mots-clés dans les titres.', 'ai-content-filler' ); ?></p>
         <?php endif;
@@ -737,7 +730,7 @@ class AICF_Settings {
                     <?php printf(
                         /* translators: %d: daily generation limit */
                         esc_html__( '%d générations/jour, 5 types de widgets, 2 templates. ', 'ai-content-filler' ),
-                        AICF_License::FREE_DAILY_LIMIT
+                        absint( AICF_License::FREE_DAILY_LIMIT )
                     ); ?>
                     <a href="<?php echo esc_url( AICF_License::get_upgrade_url() ); ?>" class="aicf-upgrade-link">
                         <?php esc_html_e( 'Passer en Pro pour tout débloquer', 'ai-content-filler' ); ?> &rarr;

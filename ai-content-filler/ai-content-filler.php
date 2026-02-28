@@ -1,11 +1,11 @@
 <?php
 /**
  * Plugin Name: AI Content Filler
- * Plugin URI:  https://example.com/ai-content-filler
- * Description: Génère automatiquement le contenu des widgets Elementor (Heading, Text Editor) via l'API Claude d'Anthropic.
+ * Plugin URI:  https://textflowlab.com/ai-content-filler
+ * Description: Generate content for your Gutenberg blocks and Elementor widgets in one click using AI (Claude, GPT-4o, DeepSeek).
  * Version:     1.0.5
- * Author:      AI Content Filler
- * Author URI:  https://example.com
+ * Author:      nicolombe
+ * Author URI:  https://textflowlab.com
  * License:     GPL-2.0+
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: ai-content-filler

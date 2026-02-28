@@ -87,6 +87,7 @@ class AICF_Elementor_Bridge {
             return new WP_Error(
                 'aicf_daily_limit',
                 sprintf(
+                    /* translators: %d: daily generation limit for free plan */
                     __( 'Limite quotidienne atteinte (%d générations/jour en plan gratuit). Passez en Pro pour des générations illimitées.', 'ai-content-filler' ),
                     AICF_License::FREE_DAILY_LIMIT
                 ),
@@ -102,6 +103,7 @@ class AICF_Elementor_Bridge {
             return new WP_Error(
                 'aicf_rate_limited',
                 sprintf(
+                    /* translators: %d: number of seconds to wait between requests */
                     __( 'Veuillez patienter %d secondes entre chaque génération.', 'ai-content-filler' ),
                     self::RATE_LIMIT_SECONDS
                 ),
