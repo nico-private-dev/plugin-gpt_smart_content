@@ -57,13 +57,22 @@ class AICF_License {
     // Feature gating : widgets supportés
     // -----------------------------------------------------------------
 
-    /** Widgets disponibles en version gratuite */
+    /** Widgets Elementor disponibles en version gratuite */
     const FREE_WIDGETS = array(
         'heading',
         'text-editor',
         'button',
         'icon-box',
         'image-box',
+    );
+
+    /** Blocs Gutenberg disponibles en version gratuite */
+    const FREE_BLOCKS = array(
+        'core/heading',
+        'core/paragraph',
+        'core/button',
+        'kadence/advancedheading',
+        'kadence/singlebtn',
     );
 
     /**

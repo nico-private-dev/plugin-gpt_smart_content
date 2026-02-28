@@ -45,7 +45,20 @@ class AICF_API_Handler {
      * Chaque type est associé à une description concise pour le prompt.
      */
     private static $widget_types = array(
-        // Elementor Free
+        // --- Blocs natifs WordPress (Gutenberg) ---
+        'core/heading'            => 'titre court et percutant, 5-8 mots max',
+        'core/paragraph'          => 'un ou plusieurs paragraphes en HTML valide (<p>, <strong>, <em>)',
+        'core/button'             => 'texte de bouton, appel à l\'action court (2-5 mots)',
+        'core/image'              => 'texte alternatif descriptif et légende courte',
+        'core/quote'              => 'citation percutante et auteur crédible',
+        // --- Kadence Blocks ---
+        'kadence/advancedheading' => 'titre court et percutant, 5-8 mots max',
+        'kadence/infobox'         => 'titre court + texte descriptif HTML + texte de bouton court',
+        'kadence/singlebtn'       => 'texte de bouton, appel à l\'action court (2-5 mots)',
+        'kadence/testimonials'    => 'témoignages clients réalistes (contenu, prénom/nom, poste)',
+        'kadence/pane'            => 'titre d\'accordéon court formulé comme une question claire',
+        'kadence/tab'             => 'titre d\'onglet court et descriptif (2-4 mots)',
+        // --- Elementor Free ---
         'heading'               => 'titre court et percutant, 5-8 mots max',
         'text-editor'           => 'un ou plusieurs paragraphes en HTML valide (<p>, <strong>, <em>)',
         'button'                => 'texte de bouton, appel à l\'action court (2-5 mots)',

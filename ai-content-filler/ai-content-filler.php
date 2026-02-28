@@ -3,7 +3,7 @@
  * Plugin Name: AI Content Filler
  * Plugin URI:  https://example.com/ai-content-filler
  * Description: Génère automatiquement le contenu des widgets Elementor (Heading, Text Editor) via l'API Claude d'Anthropic.
- * Version:     1.0.0
+ * Version:     1.0.1
  * Author:      AI Content Filler
  * Author URI:  https://example.com
  * License:     GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Constantes du plugin
-define( 'AICF_VERSION', '1.0.0' );
+define( 'AICF_VERSION', '1.0.1' );
 define( 'AICF_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'AICF_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'AICF_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
@@ -63,6 +63,7 @@ final class AI_Content_Filler {
         require_once AICF_PLUGIN_DIR . 'includes/class-settings.php';
         require_once AICF_PLUGIN_DIR . 'includes/class-api-handler.php';
         require_once AICF_PLUGIN_DIR . 'includes/class-elementor-bridge.php';
+        require_once AICF_PLUGIN_DIR . 'includes/class-gutenberg-bridge.php';
     }
 
     /**
@@ -74,6 +75,9 @@ final class AI_Content_Filler {
 
         // Endpoint REST API + injection dans l'éditeur Elementor
         AICF_Elementor_Bridge::get_instance();
+
+        // Sidebar dans l'éditeur Gutenberg
+        AICF_Gutenberg_Bridge::get_instance();
 
         // Lien rapide vers les réglages depuis la page des plugins
         add_filter( 'plugin_action_links_' . AICF_PLUGIN_BASENAME, array( $this, 'add_settings_link' ) );
@@ -93,14 +97,12 @@ final class AI_Content_Filler {
     }
 
     /**
-     * Affiche un avertissement si Elementor n'est pas activé.
+     * Affiche un avertissement si ni Elementor ni Gutenberg ne sont disponibles.
+     * Le plugin fonctionne avec l'un ou l'autre — aucun avertissement si Gutenberg est actif.
      */
     public function check_elementor_dependency() {
-        if ( ! did_action( 'elementor/loaded' ) ) {
-            echo '<div class="notice notice-warning is-dismissible"><p>';
-            echo esc_html__( 'AI Content Filler nécessite Elementor pour fonctionner. Veuillez installer et activer Elementor.', 'ai-content-filler' );
-            echo '</p></div>';
-        }
+        // Gutenberg est intégré à WordPress depuis 5.0 — toujours disponible
+        // On n'affiche donc plus d'avertissement si Elementor est absent.
     }
 }
 

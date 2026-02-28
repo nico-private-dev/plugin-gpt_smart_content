@@ -22,7 +22,7 @@ if ( ! function_exists( 'tex_fs' ) ) {
                 'slug'                => 'textflow',
                 'type'                => 'plugin',
                 'public_key'          => 'pk_4948ceebe34298f0b4c10d565e2a5',
-                'is_premium'          => true,
+                'is_premium'          => false,
                 'premium_suffix'      => 'Pro',
                 'has_premium_version' => true,
                 'has_addons'          => false,
