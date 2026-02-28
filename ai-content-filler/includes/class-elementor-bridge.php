@@ -231,7 +231,7 @@ class AICF_Elementor_Bridge {
                 'error'          => __( 'Erreur', 'ai-content-filler' ),
                 'no_widgets'     => __( 'Aucun widget avec du contenu texte trouvé sur cette page.', 'ai-content-filler' ),
                 'empty_prompt'   => __( 'Veuillez saisir un prompt.', 'ai-content-filler' ),
-                'no_api_key'     => __( 'Configurez votre clé API dans Réglages > AI Content Filler.', 'ai-content-filler' ),
+                'no_api_key'     => __( 'Configurez votre clé API dans Réglages > TextFlow.', 'ai-content-filler' ),
                 'rate_limited'   => __( 'Veuillez patienter quelques secondes avant de relancer.', 'ai-content-filler' ),
                 'save_reminder'  => __( 'N\'oubliez pas de sauvegarder la page avec le bouton Elementor.', 'ai-content-filler' ),
                 'daily_limit'    => __( 'Limite quotidienne atteinte. Revenez demain ou passez en Pro.', 'ai-content-filler' ),

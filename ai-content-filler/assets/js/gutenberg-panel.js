@@ -8,6 +8,7 @@
     var el          = wp.element.createElement;
     var useState    = wp.element.useState;
     var useEffect   = wp.element.useEffect;
+    var useRef      = wp.element.useRef;
     var useCallback = wp.element.useCallback;
     var Fragment    = wp.element.Fragment;
     var config      = aicfGutenbergConfig;
@@ -152,14 +153,27 @@
                 }
 
                 if ( Object.keys( fields ).length > 0 ) {
-                    result.push( {
+                    var entry = {
                         id:       block.clientId,
                         type:     block.name,
                         label:    blockDef.label,
                         cssClass: blockDef.cssClass || 'aicf-wl-type-default',
                         fields:   fields,
                         preview:  getPreview( fields ),
-                    } );
+                    };
+
+                    // kadence/advancedheading peut être h1-h6, p, span ou div
+                    // → on envoie toujours le htmlTag réel comme hint pour un contenu adapté
+                    if ( block.name === 'kadence/advancedheading' ) {
+                        var htmlTag = ( block.attributes && block.attributes.htmlTag ) || 'h2';
+                        entry.hint = 'kadence/advancedheading-' + htmlTag;
+                        if ( htmlTag === 'p' || htmlTag === 'span' || htmlTag === 'div' ) {
+                            entry.label    = 'Texte Kadence';
+                            entry.cssClass = 'aicf-wl-type-text';
+                        }
+                    }
+
+                    result.push( entry );
                 }
             }
 
@@ -192,6 +206,13 @@
         if ( blockType === 'core/heading' && fieldKey === 'content' ) {
             // Supprimer la balise <h1-6> englobante si présente
             return value.replace( /^<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>\s*$/i, '$1' ).trim();
+        }
+
+        if ( blockType === 'kadence/advancedheading' && fieldKey === 'content' ) {
+            // Kadence heading : contenu inline uniquement, supprimer les balises englobantes
+            value = value.replace( /^<p[^>]*>([\s\S]*?)<\/p>\s*$/i, '$1' ).trim();
+            value = value.replace( /^<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>\s*$/i, '$1' ).trim();
+            return value;
         }
 
         if ( ( blockType === 'core/button' || blockType === 'kadence/singlebtn' ) && fieldKey === 'text' ) {
@@ -332,6 +353,19 @@
         var dailyRemaining    = _dailyRemaining[ 0 ];
         var setDailyRemaining = _dailyRemaining[ 1 ];
 
+        var _progress   = useState( 0 );
+        var progress    = _progress[ 0 ];
+        var setProgress = _progress[ 1 ];
+
+        var _eta   = useState( 0 );
+        var eta    = _eta[ 0 ];
+        var setEta = _eta[ 1 ];
+
+        // Refs pour le timer de progression
+        var timerRef = useRef( null );
+        var startRef = useRef( 0 );
+        var durRef   = useRef( 5000 );
+
         var isPro        = !! config.isPro;
         var freeBlocks   = config.freeBlocks || [];
 
@@ -340,6 +374,29 @@
             if ( isPro ) return true;
             return freeBlocks.indexOf( type ) !== -1;
         }
+
+        // Démarre / arrête le timer de progression selon isGenerating
+        useEffect( function () {
+            if ( ! isGenerating ) {
+                if ( timerRef.current ) {
+                    clearInterval( timerRef.current );
+                    timerRef.current = null;
+                }
+                return;
+            }
+            startRef.current = Date.now();
+            timerRef.current = setInterval( function () {
+                var elapsed   = Date.now() - startRef.current;
+                var pct       = Math.round( Math.min( 88, ( elapsed / durRef.current ) * 88 ) );
+                var remaining = Math.max( 0, Math.round( ( durRef.current - elapsed ) / 1000 ) );
+                setProgress( pct );
+                setEta( remaining );
+            }, 250 );
+            return function () {
+                clearInterval( timerRef.current );
+                timerRef.current = null;
+            };
+        }, [ isGenerating ] );
 
         // Applique un template dans le prompt
         function onTemplateClick( key ) {
@@ -412,6 +469,9 @@
                 ? wp.data.select( 'core/editor' ).getCurrentPostId()
                 : 0;
 
+            durRef.current = Math.min( 60000, Math.max( 5000, 3000 + blocksToSend.length * 2500 ) );
+            setProgress( 0 );
+            setEta( Math.round( durRef.current / 1000 ) );
             setGenerating( true );
             setStep( 'generating' );
             setStatus( { type: 'loading', message: i18n.loading } );
@@ -420,7 +480,9 @@
                 page_id:     pageId,
                 user_prompt: prompt,
                 widgets:     blocksToSend.map( function ( b ) {
-                    return { id: b.id, type: b.type, fields: b.fields };
+                    var w = { id: b.id, type: b.type, fields: b.fields };
+                    if ( b.hint ) { w.hint = b.hint; }
+                    return w;
                 } ),
             };
 
@@ -453,9 +515,12 @@
                     setDailyRemaining( data.dailyRemaining );
                 }
 
-                setStatus( { type: 'success', message: i18n.success } );
-                setStep( 'select' );
-                setGenerating( false );
+                setProgress( 100 );
+                setTimeout( function () {
+                    setStatus( { type: 'success', message: i18n.success } );
+                    setStep( 'select' );
+                    setGenerating( false );
+                }, 350 );
             } )
             .catch( function ( err ) {
                 setStatus( { type: 'error', message: err.message || i18n.error } );
@@ -532,10 +597,23 @@
         } );
 
         // Statut
-        var statusCls = 'aicf-gb-status aicf-status-' + status.type;
-        var statusBar = status.message
-            ? el( 'div', { className: statusCls }, status.message )
-            : null;
+        var statusBar;
+        if ( status.type === 'loading' ) {
+            var etaText = eta > 0 ? '~' + eta + 's' : '…';
+            statusBar = el( 'div', { className: 'aicf-gb-status aicf-status-loading' },
+                el( 'span', { className: 'aicf-progress-text' },
+                    status.message + ' — ',
+                    el( 'span', { className: 'aicf-progress-eta' }, etaText )
+                ),
+                el( 'div', { className: 'aicf-progress-bar-track' },
+                    el( 'div', { className: 'aicf-progress-bar-fill', style: { width: progress + '%' } } )
+                )
+            );
+        } else {
+            statusBar = status.message
+                ? el( 'div', { className: 'aicf-gb-status aicf-status-' + status.type }, status.message )
+                : null;
+        }
 
         // ---- Étape : prompt ----
         if ( step === 'prompt' ) {

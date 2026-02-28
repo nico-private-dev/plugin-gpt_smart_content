@@ -1,9 +1,9 @@
 <?php
 /**
- * Plugin Name: AI Content Filler
+ * Plugin Name: TextFlow
  * Plugin URI:  https://textflowlab.com/ai-content-filler
  * Description: Generate content for your Gutenberg blocks and Elementor widgets in one click using AI (Claude, GPT-4o, DeepSeek).
- * Version:     1.0.5
+ * Version:     1.0.8
  * Author:      nicolombe
  * Author URI:  https://textflowlab.com
  * License:     GPL-2.0+
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Constantes du plugin
-define( 'AICF_VERSION', '1.0.5' );
+define( 'AICF_VERSION', '1.0.8' );
 define( 'AICF_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'AICF_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'AICF_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );

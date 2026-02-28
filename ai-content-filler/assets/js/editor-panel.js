@@ -28,6 +28,12 @@
     // Historique du contenu par widget (pour le revert)
     var widgetHistory = {};
 
+    // Progress bar
+    var progressTimer   = null;
+    var progressStart   = 0;
+    var progressDuration = 0;
+    var progressLabel   = '';
+
     // ---------------------------------------------------------------
     // Prompt templates
     // ---------------------------------------------------------------
@@ -228,7 +234,7 @@
         var panelHTML =
             '<div id="aicf-panel">' +
                 '<div id="aicf-panel-header">' +
-                    '<span class="aicf-panel-title">AI Content Filler ' + planBadge + '</span>' +
+                    '<span class="aicf-panel-title">TextFlow ' + planBadge + '</span>' +
                     '<button id="aicf-panel-toggle" type="button" title="Réduire/Agrandir">&#9660;</button>' +
                 '</div>' +
                 '<div id="aicf-panel-body">' +
@@ -278,6 +284,55 @@
             .removeClass('aicf-status-idle aicf-status-loading aicf-status-success aicf-status-error')
             .addClass('aicf-status-' + type)
             .text(message);
+    }
+
+    // ---------------------------------------------------------------
+    // Progress bar helpers
+    // ---------------------------------------------------------------
+
+    function estimateDuration(widgetCount) {
+        return Math.min(60000, Math.max(5000, 3000 + widgetCount * 2500));
+    }
+
+    function progressHtml(pct, etaSec) {
+        var eta = etaSec > 0 ? '~' + etaSec + 's' : '…';
+        return '<span class="aicf-progress-text">' + progressLabel +
+            ' — <span class="aicf-progress-eta">' + eta + '</span></span>' +
+            '<div class="aicf-progress-bar-track"><div class="aicf-progress-bar-fill" style="width:' + pct + '%"></div></div>';
+    }
+
+    function clearProgressTimer() {
+        if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+    }
+
+    function startProgressBar(durationMs, label) {
+        clearProgressTimer();
+        progressLabel   = label || config.i18n.loading;
+        progressStart   = Date.now();
+        progressDuration = durationMs;
+        $('#aicf-status')
+            .removeClass('aicf-status-idle aicf-status-loading aicf-status-success aicf-status-error')
+            .addClass('aicf-status-loading')
+            .html(progressHtml(0, Math.round(durationMs / 1000)));
+        progressTimer = setInterval(function () {
+            var elapsed   = Date.now() - progressStart;
+            var pct       = Math.round(Math.min(88, (elapsed / progressDuration) * 88));
+            var remaining = Math.max(0, Math.round((progressDuration - elapsed) / 1000));
+            $('#aicf-status').html(progressHtml(pct, remaining));
+        }, 250);
+    }
+
+    function completeProgressBar(type, message) {
+        clearProgressTimer();
+        var $fill = $('#aicf-status').find('.aicf-progress-bar-fill');
+        if ($fill.length) {
+            $fill.css('width', '100%');
+            setTimeout(function () {
+                setStatus(message, type);
+            }, 350);
+        } else {
+            setStatus(message, type);
+        }
     }
 
     // ---------------------------------------------------------------
@@ -967,7 +1022,8 @@
 
             isGenerating = true;
             currentStep = 'generating';
-            setStatus(config.i18n.loading + ' (' + selectedWidgets.length + ' widget' + (selectedWidgets.length > 1 ? 's' : '') + ')', 'loading');
+            var genLabel = config.i18n.loading + ' (' + selectedWidgets.length + ' widget' + (selectedWidgets.length > 1 ? 's' : '') + ')';
+            startProgressBar(estimateDuration(selectedWidgets.length), genLabel);
             $('#aicf-generate-btn').prop('disabled', true).html('&#10024; Génération...');
             $('#aicf-rescan-btn').prop('disabled', true);
             $('#aicf-back-to-prompt').prop('disabled', true);
@@ -1020,13 +1076,14 @@
                     updateDailyCounter(result.data.dailyRemaining);
                 }
 
-                setStatus(config.i18n.success + ' (' + applied + ' widget' + (applied > 1 ? 's' : '') + ' mis à jour) — ' + config.i18n.save_reminder, 'success');
+                completeProgressBar('success', config.i18n.success + ' (' + applied + ' widget' + (applied > 1 ? 's' : '') + ' mis à jour) — ' + config.i18n.save_reminder);
             })
             .catch(function (err) {
                 console.error('[AI Content Filler] Erreur:', err);
-                setStatus(config.i18n.error + ' : ' + err.message, 'error');
+                completeProgressBar('error', config.i18n.error + ' : ' + err.message);
             })
             .finally(function () {
+                clearProgressTimer();
                 isGenerating = false;
                 currentStep = 'select';
                 $('#aicf-generate-btn').prop('disabled', false);
@@ -1038,6 +1095,7 @@
 
         } catch (err) {
             console.error('[AI Content Filler] Erreur inattendue:', err);
+            clearProgressTimer();
             setStatus(config.i18n.error + ' : ' + err.message, 'error');
             isGenerating = false;
             currentStep = 'select';

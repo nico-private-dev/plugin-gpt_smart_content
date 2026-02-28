@@ -67,8 +67,8 @@ class AICF_Settings {
      */
     public function add_settings_page() {
         add_options_page(
-            __( 'AI Content Filler', 'ai-content-filler' ),
-            __( 'AI Content Filler', 'ai-content-filler' ),
+            __( 'TextFlow', 'ai-content-filler' ),
+            __( 'TextFlow', 'ai-content-filler' ),
             'manage_options',
             self::PAGE_SLUG,
             array( $this, 'render_settings_page' )
@@ -758,7 +758,6 @@ class AICF_Settings {
                 <!-- Section 1 : Connexion API -->
                 <div class="aicf-card">
                     <div class="aicf-card-header">
-                        <span class="aicf-card-icon">🔑</span>
                         <h2><?php esc_html_e( 'Connexion API', 'ai-content-filler' ); ?></h2>
                     </div>
                     <div class="aicf-card-body">
@@ -771,7 +770,6 @@ class AICF_Settings {
                 <!-- Section 2 : Paramètres de génération -->
                 <div class="aicf-card">
                     <div class="aicf-card-header">
-                        <span class="aicf-card-icon">⚙️</span>
                         <h2><?php esc_html_e( 'Paramètres de génération', 'ai-content-filler' ); ?></h2>
                     </div>
                     <div class="aicf-card-body">
@@ -784,7 +782,6 @@ class AICF_Settings {
                 <!-- Section 3 : Style de rédaction -->
                 <div class="aicf-card">
                     <div class="aicf-card-header">
-                        <span class="aicf-card-icon">&#127912;</span>
                         <h2><?php esc_html_e( 'Style de rédaction', 'ai-content-filler' ); ?></h2>
                     </div>
                     <div class="aicf-card-body">
@@ -798,7 +795,6 @@ class AICF_Settings {
                 <!-- Section 4 : Brief client -->
                 <div class="aicf-card">
                     <div class="aicf-card-header">
-                        <span class="aicf-card-icon">📋</span>
                         <h2><?php esc_html_e( 'Brief client', 'ai-content-filler' ); ?></h2>
                     </div>
                     <div class="aicf-card-body">

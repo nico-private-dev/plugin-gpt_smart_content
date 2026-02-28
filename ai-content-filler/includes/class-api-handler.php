@@ -52,8 +52,17 @@ class AICF_API_Handler {
         'core/button'             => 'texte de bouton brut, appel à l\'action 2-5 mots, sans aucune balise HTML',
         'core/image'              => 'texte alternatif descriptif (texte brut sans HTML)',
         'core/quote'              => 'auteur de la citation (texte brut, prénom nom)',
-        // --- Kadence Blocks ---
-        'kadence/advancedheading' => 'titre court et percutant 5-8 mots, texte brut ou inline <strong>/<em> — SANS balise <h*>',
+        // --- Kadence Blocks : advancedheading par variant htmlTag ---
+        'kadence/advancedheading'      => 'titre court et percutant 4-8 mots, texte brut ou inline <strong>/<em> — SANS balise englobante',
+        'kadence/advancedheading-h1'   => 'titre principal percutant, 3-7 mots, texte brut ou inline <strong>/<em> — SANS balise englobante',
+        'kadence/advancedheading-h2'   => 'titre de section percutant, 4-8 mots, texte brut ou inline <strong>/<em> — SANS balise englobante',
+        'kadence/advancedheading-h3'   => 'sous-titre percutant, 4-8 mots, texte brut ou inline <strong>/<em> — SANS balise englobante',
+        'kadence/advancedheading-h4'   => 'sous-titre court, 4-8 mots, texte brut ou inline <strong>/<em> — SANS balise englobante',
+        'kadence/advancedheading-h5'   => 'sous-titre court, 4-8 mots, texte brut ou inline <strong>/<em> — SANS balise englobante',
+        'kadence/advancedheading-h6'   => 'sous-titre court, 4-8 mots, texte brut ou inline <strong>/<em> — SANS balise englobante',
+        'kadence/advancedheading-p'    => 'paragraphe descriptif 2-4 phrases, inline <strong>/<em> autorisé — SANS balise <p> englobante',
+        'kadence/advancedheading-span' => 'texte court inline, quelques mots maximum, texte brut — SANS balise englobante',
+        'kadence/advancedheading-div'  => 'paragraphe descriptif 2-4 phrases, inline <strong>/<em> autorisé — SANS balise englobante',
         'kadence/infobox'         => 'titre court (texte brut) + texte descriptif avec inline HTML + texte de bouton brut',
         'kadence/singlebtn'       => 'texte de bouton brut 2-5 mots, sans aucune balise HTML',
         'kadence/testimonials'    => 'témoignages clients réalistes (contenu, prénom/nom, poste)',
@@ -105,7 +114,7 @@ class AICF_API_Handler {
         if ( empty( $api_key ) ) {
             return new WP_Error(
                 'aicf_no_api_key',
-                __( 'Configurez votre clé API dans Réglages > AI Content Filler.', 'ai-content-filler' ),
+                __( 'Configurez votre clé API dans Réglages > TextFlow.', 'ai-content-filler' ),
                 array( 'status' => 400 )
             );
         }
@@ -271,9 +280,10 @@ class AICF_API_Handler {
         $message .= "LISTE DES WIDGETS À REMPLIR :\n\n";
 
         foreach ( $widgets as $index => $widget ) {
-            $num  = $index + 1;
-            $type = $widget['type'];
-            $hint = isset( self::$widget_types[ $type ] ) ? self::$widget_types[ $type ] : $type;
+            $num       = $index + 1;
+            $type      = $widget['type'];
+            $hint_key  = isset( $widget['hint'] ) ? $widget['hint'] : $type;
+            $hint      = isset( self::$widget_types[ $hint_key ] ) ? self::$widget_types[ $hint_key ] : $type;
 
             $message .= $num . ". Widget ID: \"" . $widget['id'] . "\"\n";
             $message .= "   Type: " . $type . " (" . $hint . ")\n";
