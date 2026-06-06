@@ -8,7 +8,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-class AICF_API_Handler {
+class TXFLOW_API_Handler {
 
     /** URL de l'API Messages d'Anthropic */
     const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
@@ -63,9 +63,11 @@ class AICF_API_Handler {
         'kadence/advancedheading-p'    => 'paragraphe descriptif 2-4 phrases, inline <strong>/<em> autorisé — SANS balise <p> englobante',
         'kadence/advancedheading-span' => 'texte court inline, quelques mots maximum, texte brut — SANS balise englobante',
         'kadence/advancedheading-div'  => 'paragraphe descriptif 2-4 phrases, inline <strong>/<em> autorisé — SANS balise englobante',
+        'kadence/image'           => 'texte alternatif descriptif en quelques mots (texte brut sans HTML) + légende courte et pertinente (texte brut)',
         'kadence/infobox'         => 'titre court (texte brut) + texte descriptif avec inline HTML + texte de bouton brut',
         'kadence/singlebtn'       => 'texte de bouton brut 2-5 mots, sans aucune balise HTML',
-        'kadence/testimonials'    => 'témoignages clients réalistes (contenu, prénom/nom, poste)',
+        'kadence/testimonials'    => 'témoignages clients réalistes : pour chaque item, un avis client (texte brut ou inline HTML), un prénom et nom réalistes, un intitulé de poste crédible',
+        'kadence/testimonial'     => 'content: avis client réaliste en 2-3 phrases (inline HTML autorisé, SANS balise <p> englobante) | name: prénom et nom réalistes (texte brut) | occupation: intitulé de poste crédible (texte brut)',
         'kadence/pane'            => 'titre d\'accordéon court formulé comme une question claire',
         'kadence/tab'             => 'titre d\'onglet court et descriptif (2-4 mots)',
         // --- Elementor Free ---
@@ -109,12 +111,15 @@ class AICF_API_Handler {
      * @return array|WP_Error      Tableau de widgets avec contenu généré, ou WP_Error.
      */
     public function generate_content( $user_prompt, $widgets, $page_id ) {
-        $api_key = AICF_Settings::get_api_key();
+        // Permettre aux add-ons (ex: textflow-ai-pro) d'enrichir le prompt (ex: Brand Voice)
+        $user_prompt = apply_filters( 'txflow_generate_prompt', $user_prompt, $widgets, $page_id );
+
+        $api_key = TXFLOW_Settings::get_api_key();
 
         if ( empty( $api_key ) ) {
             return new WP_Error(
-                'aicf_no_api_key',
-                __( 'Configurez votre clé API dans Réglages > TextFlow.', 'ai-content-filler' ),
+                'txflow_no_api_key',
+                __( 'Configurez votre clé API dans Réglages > TextFlow.', 'textflow-ai' ),
                 array( 'status' => 400 )
             );
         }
@@ -212,13 +217,13 @@ class AICF_API_Handler {
     }
 
     private function build_system_prompt() {
-        $brief         = AICF_Settings::get_client_brief();
-        $file_brief    = AICF_Settings::extract_brief_file_content();
-        $lang_code     = AICF_Settings::get_language();
+        $brief         = TXFLOW_Settings::get_client_brief();
+        $file_brief    = TXFLOW_Settings::extract_brief_file_content();
+        $lang_code     = TXFLOW_Settings::get_language();
         $lang_name     = isset( self::$language_names[ $lang_code ] ) ? self::$language_names[ $lang_code ] : 'français';
-        $tone          = AICF_Settings::get_tone();
-        $heading_style = AICF_Settings::get_heading_style();
-        $heading_color = AICF_Settings::get_heading_style_color();
+        $tone          = TXFLOW_Settings::get_tone();
+        $heading_style = TXFLOW_Settings::get_heading_style();
+        $heading_color = TXFLOW_Settings::get_heading_style_color();
 
         // LANGUE — en premier, instruction non négociable
         $system  = "LANGUE DE RÉDACTION OBLIGATOIRE : " . strtoupper( $lang_name ) . "\n";
@@ -280,10 +285,9 @@ class AICF_API_Handler {
         $message .= "LISTE DES WIDGETS À REMPLIR :\n\n";
 
         foreach ( $widgets as $index => $widget ) {
-            $num       = $index + 1;
-            $type      = $widget['type'];
-            $hint_key  = isset( $widget['hint'] ) ? $widget['hint'] : $type;
-            $hint      = isset( self::$widget_types[ $hint_key ] ) ? self::$widget_types[ $hint_key ] : $type;
+            $num  = $index + 1;
+            $type = $widget['type'];
+            $hint = isset( self::$widget_types[ $type ] ) ? self::$widget_types[ $type ] : $type;
 
             $message .= $num . ". Widget ID: \"" . $widget['id'] . "\"\n";
             $message .= "   Type: " . $type . " (" . $hint . ")\n";
@@ -319,8 +323,8 @@ class AICF_API_Handler {
      * @return string|WP_Error       Texte brut retourné par l'IA, ou WP_Error.
      */
     private function call_api( $system_prompt, $user_message, $widget_count = 1 ) {
-        $provider = AICF_Settings::get_provider();
-        $api_key  = AICF_Settings::get_api_key();
+        $provider = TXFLOW_Settings::get_provider();
+        $api_key  = TXFLOW_Settings::get_api_key();
 
         switch ( $provider ) {
             case 'openai':
@@ -363,9 +367,9 @@ class AICF_API_Handler {
         $max_tokens = $this->compute_max_tokens( $widget_count );
 
         $body = array(
-            'model'       => AICF_Settings::get_model(),
+            'model'       => TXFLOW_Settings::get_model(),
             'max_tokens'  => $max_tokens,
-            'temperature' => AICF_Settings::get_temperature(),
+            'temperature' => TXFLOW_Settings::get_temperature(),
             'system'      => $system_prompt,
             'messages'    => array(
                 array(
@@ -387,8 +391,8 @@ class AICF_API_Handler {
 
         if ( is_wp_error( $response ) ) {
             return new WP_Error(
-                'aicf_api_request_failed',
-                __( 'Erreur de connexion à l\'API : ', 'ai-content-filler' ) . $response->get_error_message(),
+                'txflow_api_request_failed',
+                __( 'Erreur de connexion à l\'API : ', 'textflow-ai' ) . $response->get_error_message(),
                 array( 'status' => 502 )
             );
         }
@@ -400,13 +404,13 @@ class AICF_API_Handler {
             $error_data = json_decode( $body_raw, true );
             $error_msg  = isset( $error_data['error']['message'] )
                 ? $error_data['error']['message']
-                : __( 'Erreur inconnue de l\'API.', 'ai-content-filler' );
+                : __( 'Erreur inconnue de l\'API.', 'textflow-ai' );
 
             return new WP_Error(
-                'aicf_api_error',
+                'txflow_api_error',
                 sprintf(
                     /* translators: %1$d: HTTP status code, %2$s: error message from the API */
-                    __( 'API Anthropic (HTTP %1$d) : %2$s', 'ai-content-filler' ),
+                    __( 'API Anthropic (HTTP %1$d) : %2$s', 'textflow-ai' ),
                     $status_code,
                     $error_msg
                 ),
@@ -418,16 +422,16 @@ class AICF_API_Handler {
 
         if ( ! isset( $data['content'][0]['text'] ) ) {
             return new WP_Error(
-                'aicf_api_empty_response',
-                __( 'La réponse de l\'API est vide ou dans un format inattendu.', 'ai-content-filler' ),
+                'txflow_api_empty_response',
+                __( 'La réponse de l\'API est vide ou dans un format inattendu.', 'textflow-ai' ),
                 array( 'status' => 500 )
             );
         }
 
         if ( isset( $data['stop_reason'] ) && 'max_tokens' === $data['stop_reason'] ) {
             return new WP_Error(
-                'aicf_response_truncated',
-                __( 'La réponse a été tronquée (trop de contenu pour le nombre de tokens alloué). Essayez avec moins de widgets ou augmentez la limite de tokens dans les réglages.', 'ai-content-filler' ),
+                'txflow_response_truncated',
+                __( 'La réponse a été tronquée (trop de contenu pour le nombre de tokens alloué). Essayez avec moins de widgets ou augmentez la limite de tokens dans les réglages.', 'textflow-ai' ),
                 array( 'status' => 500 )
             );
         }
@@ -449,9 +453,9 @@ class AICF_API_Handler {
         $max_tokens = $this->compute_max_tokens( $widget_count );
 
         $body = array(
-            'model'       => AICF_Settings::get_model(),
+            'model'       => TXFLOW_Settings::get_model(),
             'max_tokens'  => $max_tokens,
-            'temperature' => AICF_Settings::get_temperature(),
+            'temperature' => TXFLOW_Settings::get_temperature(),
             'messages'    => array(
                 array(
                     'role'    => 'system',
@@ -475,8 +479,8 @@ class AICF_API_Handler {
 
         if ( is_wp_error( $response ) ) {
             return new WP_Error(
-                'aicf_api_request_failed',
-                __( 'Erreur de connexion à l\'API : ', 'ai-content-filler' ) . $response->get_error_message(),
+                'txflow_api_request_failed',
+                __( 'Erreur de connexion à l\'API : ', 'textflow-ai' ) . $response->get_error_message(),
                 array( 'status' => 502 )
             );
         }
@@ -488,13 +492,13 @@ class AICF_API_Handler {
             $error_data = json_decode( $body_raw, true );
             $error_msg  = isset( $error_data['error']['message'] )
                 ? $error_data['error']['message']
-                : __( 'Erreur inconnue de l\'API.', 'ai-content-filler' );
+                : __( 'Erreur inconnue de l\'API.', 'textflow-ai' );
 
             return new WP_Error(
-                'aicf_api_error',
+                'txflow_api_error',
                 sprintf(
                     /* translators: %1$d: HTTP status code, %2$s: error message from the API */
-                    __( 'API (HTTP %1$d) : %2$s', 'ai-content-filler' ),
+                    __( 'API (HTTP %1$d) : %2$s', 'textflow-ai' ),
                     $status_code,
                     $error_msg
                 ),
@@ -506,16 +510,16 @@ class AICF_API_Handler {
 
         if ( ! isset( $data['choices'][0]['message']['content'] ) ) {
             return new WP_Error(
-                'aicf_api_empty_response',
-                __( 'La réponse de l\'API est vide ou dans un format inattendu.', 'ai-content-filler' ),
+                'txflow_api_empty_response',
+                __( 'La réponse de l\'API est vide ou dans un format inattendu.', 'textflow-ai' ),
                 array( 'status' => 500 )
             );
         }
 
         if ( isset( $data['choices'][0]['finish_reason'] ) && 'length' === $data['choices'][0]['finish_reason'] ) {
             return new WP_Error(
-                'aicf_response_truncated',
-                __( 'La réponse a été tronquée (trop de contenu pour le nombre de tokens alloué). Essayez avec moins de widgets ou augmentez la limite de tokens dans les réglages.', 'ai-content-filler' ),
+                'txflow_response_truncated',
+                __( 'La réponse a été tronquée (trop de contenu pour le nombre de tokens alloué). Essayez avec moins de widgets ou augmentez la limite de tokens dans les réglages.', 'textflow-ai' ),
                 array( 'status' => 500 )
             );
         }
@@ -530,7 +534,7 @@ class AICF_API_Handler {
      * @return int
      */
     private function compute_max_tokens( $widget_count ) {
-        $configured = AICF_Settings::get_max_tokens();
+        $configured = TXFLOW_Settings::get_max_tokens();
         $needed     = max( $configured, $widget_count * self::TOKENS_PER_WIDGET );
         return min( $needed, 8192 );
     }
@@ -615,8 +619,8 @@ class AICF_API_Handler {
     private static function check_test_response( $response, $api_label ) {
         if ( is_wp_error( $response ) ) {
             return new WP_Error(
-                'aicf_test_failed',
-                __( 'Impossible de joindre l\'API : ', 'ai-content-filler' ) . $response->get_error_message()
+                'txflow_test_failed',
+                __( 'Impossible de joindre l\'API : ', 'textflow-ai' ) . $response->get_error_message()
             );
         }
 
@@ -630,10 +634,10 @@ class AICF_API_Handler {
         $error_data = json_decode( $body_raw, true );
         $error_msg  = isset( $error_data['error']['message'] )
             ? $error_data['error']['message']
-            : __( 'Clé API invalide ou non autorisée.', 'ai-content-filler' );
+            : __( 'Clé API invalide ou non autorisée.', 'textflow-ai' );
 
         return new WP_Error(
-            'aicf_test_failed',
+            'txflow_test_failed',
             sprintf( '%s (HTTP %d) : %s', $api_label, $status_code, $error_msg )
         );
     }
@@ -676,10 +680,10 @@ class AICF_API_Handler {
 
         $preview = mb_substr( $text, 0, 200 );
         return new WP_Error(
-            'aicf_invalid_json',
+            'txflow_invalid_json',
             sprintf(
                 /* translators: %s: beginning of the AI response that could not be parsed as JSON */
-                __( 'Impossible d\'extraire un JSON valide de la réponse de l\'IA. Début de la réponse : "%s"', 'ai-content-filler' ),
+                __( 'Impossible d\'extraire un JSON valide de la réponse de l\'IA. Début de la réponse : "%s"', 'textflow-ai' ),
                 $preview
             ),
             array( 'status' => 500 )

@@ -17,8 +17,6 @@
     var config = aicfConfig;
     var isGenerating = false;
     var panelCreated = false;
-    var isPro = !!config.isPro;
-    var dailyRemaining = config.dailyRemaining;
 
     var currentStep = 'prompt';
     var scannedWidgets = [];
@@ -206,39 +204,23 @@
         if (panelCreated || document.getElementById('aicf-panel')) return;
         panelCreated = true;
 
-        // Build template buttons (gate Pro templates)
-        var freeTemplates = config.freeTemplates || [];
+        // Build template buttons
         var tplButtons = '';
         for (var tplKey in PROMPT_TEMPLATES) {
             if (PROMPT_TEMPLATES.hasOwnProperty(tplKey)) {
-                var isLocked = !isPro && freeTemplates.length > 0 && freeTemplates.indexOf(tplKey) === -1;
-                var lockClass = isLocked ? ' aicf-tpl-locked' : '';
-                var lockIcon = isLocked ? ' &#128274;' : '';
-                tplButtons += '<button type="button" class="aicf-tpl-btn' + lockClass + '" data-tpl="' + tplKey + '" data-locked="' + (isLocked ? '1' : '0') + '">' + PROMPT_TEMPLATES[tplKey].label + lockIcon + '</button>';
+                tplButtons += '<button type="button" class="aicf-tpl-btn" data-tpl="' + tplKey + '">' + PROMPT_TEMPLATES[tplKey].label + '</button>';
             }
         }
 
-        // Daily limit indicator for free users
-        var limitHtml = '';
-        if (!isPro && dailyRemaining >= 0) {
-            limitHtml = '<div id="aicf-daily-limit" class="aicf-daily-limit">' +
-                '&#9889; <span id="aicf-daily-count">' + dailyRemaining + '</span>/' + config.dailyLimit + ' ' + 'générations restantes' +
-                '</div>';
-        }
 
-        // Plan badge
-        var planBadge = isPro
-            ? '<span class="aicf-plan-badge aicf-plan-pro">PRO</span>'
-            : '<span class="aicf-plan-badge aicf-plan-free">FREE</span>';
 
         var panelHTML =
             '<div id="aicf-panel">' +
                 '<div id="aicf-panel-header">' +
-                    '<span class="aicf-panel-title">TextFlow ' + planBadge + '</span>' +
+                    '<span class="aicf-panel-title">TextFlow AI</span>' +
                     '<button id="aicf-panel-toggle" type="button" title="Réduire/Agrandir">&#9660;</button>' +
                 '</div>' +
                 '<div id="aicf-panel-body">' +
-                    limitHtml +
                     // Prompt templates
                     '<div id="aicf-templates" class="aicf-templates">' +
                         '<span class="aicf-templates-label">Modèles :</span>' +
@@ -342,12 +324,6 @@
     function onTemplateClick() {
         var $btn = $(this);
 
-        // Bloquer les templates Pro en version gratuite
-        if ($btn.data('locked') === 1 || $btn.data('locked') === '1') {
-            setStatus(config.i18n.pro_feature + ' — ' + config.i18n.upgrade, 'error');
-            return;
-        }
-
         var tplKey = $btn.data('tpl');
         var tpl = PROMPT_TEMPLATES[tplKey];
         if (tpl) {
@@ -410,7 +386,7 @@
 
     function findContainerById(container, targetId) {
         if (!container) return null;
-        if (container.model && container.model.get('id') === targetId) return container;
+        if (container.model && String(container.model.get('id')) === String(targetId)) return container;
 
         var children = null;
         if (container.children && container.children.length > 0) {
@@ -474,7 +450,7 @@
 
                 if (elType === 'widget' && widgetType && WIDGET_REGISTRY[widgetType]) {
                     var reg = WIDGET_REGISTRY[widgetType];
-                    var widgetId = child.model.get('id');
+                    var widgetId = String(child.model.get('id'));
                     var fields = {};
 
                     // Champs directs
@@ -555,10 +531,7 @@
      * Vérifie si un type de widget est autorisé dans le plan actuel.
      */
     function isWidgetAllowed(widgetType) {
-        if (isPro) return true;
-        var freeWidgets = config.freeWidgets || [];
-        if (!freeWidgets.length) return true; // Pas de restriction
-        return freeWidgets.indexOf(widgetType) !== -1;
+        return true;
     }
 
     function renderWidgetList(widgets) {
@@ -589,25 +562,17 @@
                 if (fc > 1) infoBadge = ' <span class="aicf-wl-field-count">' + fc + ' champs</span>';
             }
 
-            // Pro badge for locked widgets
-            if (!allowed) {
-                infoBadge += ' <span class="aicf-wl-pro-badge">PRO</span>';
-            }
-
             var hasHistory = widgetHistory[w.id] ? true : false;
-            var lockedClass = allowed ? '' : ' aicf-wl-item-locked';
 
-            html += '<div class="aicf-wl-item' + (hasHistory ? ' aicf-wl-item-done' : '') + lockedClass + '" data-widget-id="' + w.id + '">';
-            html += '<label class="aicf-wl-checkbox-label"><input type="checkbox" class="aicf-widget-checkbox" data-widget-id="' + w.id + '"' + (allowed ? ' checked' : ' disabled') + ' /><span class="aicf-wl-checkmark"></span></label>';
+            html += '<div class="aicf-wl-item' + (hasHistory ? ' aicf-wl-item-done' : '') + '" data-widget-id="' + w.id + '">';
+            html += '<label class="aicf-wl-checkbox-label"><input type="checkbox" class="aicf-widget-checkbox" data-widget-id="' + w.id + '" checked /><span class="aicf-wl-checkmark"></span></label>';
             html += '<div class="aicf-wl-info">';
             html += '<span class="aicf-wl-type aicf-wl-type-' + cssClass + '">' + typeLabel + infoBadge + '</span>';
-            html += '<span class="aicf-wl-preview">' + (allowed ? $('<span>').text(preview).html() : config.i18n.pro_widget) + '</span>';
+            html += '<span class="aicf-wl-preview">' + $('<span>').text(preview).html() + '</span>';
             html += '</div>';
             html += '<div class="aicf-wl-actions">';
-            if (isPro) {
-                html += '<button type="button" class="aicf-widget-regen" data-widget-id="' + w.id + '" title="Régénérer ce widget">&#x21bb;</button>';
-                html += '<button type="button" class="aicf-widget-revert" data-widget-id="' + w.id + '" title="Restaurer le contenu précédent" style="' + (hasHistory ? '' : 'display:none;') + '">&#x21a9;</button>';
-            }
+            html += '<button type="button" class="aicf-widget-regen" data-widget-id="' + w.id + '" title="Régénérer ce widget">&#x21bb;</button>';
+            html += '<button type="button" class="aicf-widget-revert" data-widget-id="' + w.id + '" title="Restaurer le contenu précédent" style="' + (hasHistory ? '' : 'display:none;') + '">&#x21a9;</button>';
             html += '<button type="button" class="aicf-widget-remove" data-widget-id="' + w.id + '" title="Exclure ce widget">&times;</button>';
             html += '</div>';
             html += '</div>';
@@ -640,14 +605,8 @@
     // ---------------------------------------------------------------
 
     function updateCostEstimate() {
-        // Cost estimate is Pro-only
-        if (!isPro) {
-            $('#aicf-cost-estimate').hide();
-            return;
-        }
-
         var selectedIds = [];
-        $('.aicf-widget-checkbox:checked').each(function () { selectedIds.push($(this).data('widget-id')); });
+        $('.aicf-widget-checkbox:checked').each(function () { selectedIds.push($(this).attr('data-widget-id')); });
 
         if (!selectedIds.length) {
             $('#aicf-cost-estimate').hide();
@@ -671,24 +630,7 @@
             .show();
     }
 
-    /**
-     * Met à jour l'affichage du compteur quotidien.
-     */
-    function updateDailyCounter(remaining) {
-        dailyRemaining = remaining;
-        var $el = $('#aicf-daily-count');
-        if ($el.length) {
-            $el.text(remaining);
-        }
-        var $container = $('#aicf-daily-limit');
-        if ($container.length) {
-            if (remaining <= 0) {
-                $container.addClass('aicf-daily-limit-reached');
-            } else if (remaining <= 3) {
-                $container.addClass('aicf-daily-limit-low');
-            }
-        }
-    }
+
 
     // ---------------------------------------------------------------
     // Helper : obtenir le root container Elementor (frais)
@@ -808,7 +750,7 @@
 
     function onWidgetRemove(e) {
         e.preventDefault();
-        var widgetId = $(this).data('widget-id');
+        var widgetId = $(this).attr('data-widget-id');
         $('.aicf-wl-item[data-widget-id="' + widgetId + '"]').slideUp(200, function () {
             $(this).remove();
             updateWidgetCount();
@@ -861,13 +803,7 @@
         e.stopPropagation();
         if (isGenerating) return;
 
-        // Regen is Pro-only
-        if (!isPro) {
-            setStatus(config.i18n.pro_feature + ' — ' + config.i18n.upgrade, 'error');
-            return;
-        }
-
-        var widgetId = $(this).data('widget-id');
+        var widgetId = $(this).attr('data-widget-id');
         var widget = null;
         for (var i = 0; i < scannedWidgets.length; i++) {
             if (scannedWidgets[i].id === widgetId) { widget = scannedWidgets[i]; break; }
@@ -915,11 +851,6 @@
             $item.addClass('aicf-wl-item-done');
             $item.find('.aicf-widget-revert').show();
 
-            // Mettre à jour le compteur quotidien
-            if (typeof result.data.dailyRemaining !== 'undefined') {
-                updateDailyCounter(result.data.dailyRemaining);
-            }
-
             setStatus('Widget régénéré ! — ' + config.i18n.save_reminder, 'success');
         })
         .catch(function (err) {
@@ -940,13 +871,7 @@
         e.preventDefault();
         e.stopPropagation();
 
-        // Revert is Pro-only
-        if (!isPro) {
-            setStatus(config.i18n.pro_feature + ' — ' + config.i18n.upgrade, 'error');
-            return;
-        }
-
-        var widgetId = $(this).data('widget-id');
+        var widgetId = $(this).attr('data-widget-id');
 
         if (!widgetHistory[widgetId]) {
             setStatus('Pas d\'historique disponible.', 'error');
@@ -1004,17 +929,11 @@
     function onGenerateClick() {
         if (isGenerating) return;
         try {
-            // Vérifier la limite quotidienne côté client
-            if (!isPro && dailyRemaining <= 0) {
-                setStatus(config.i18n.daily_limit, 'error');
-                return;
-            }
-
             var prompt = $.trim($('#aicf-prompt').val());
             if (!prompt) { setStatus(config.i18n.empty_prompt, 'error'); return; }
 
             var selectedIds = [];
-            $('.aicf-widget-checkbox:checked').each(function () { selectedIds.push($(this).data('widget-id')); });
+            $('.aicf-widget-checkbox:checked').each(function () { selectedIds.push($(this).attr('data-widget-id')); });
             if (!selectedIds.length) { setStatus('Aucun widget sélectionné.', 'error'); return; }
 
             var selectedWidgets = scannedWidgets.filter(function (w) { return selectedIds.indexOf(w.id) !== -1; });
@@ -1065,18 +984,11 @@
                     result.data.widgets.forEach(function (gw) {
                         var $item = $('.aicf-wl-item[data-widget-id="' + gw.id + '"]');
                         $item.addClass('aicf-wl-item-done');
-                        if (isPro) {
-                            $item.find('.aicf-widget-revert').show();
-                        }
+                        $item.find('.aicf-widget-revert').show();
                     });
                 }
 
-                // Mettre à jour le compteur quotidien
-                if (typeof result.data.dailyRemaining !== 'undefined') {
-                    updateDailyCounter(result.data.dailyRemaining);
-                }
-
-                completeProgressBar('success', config.i18n.success + ' (' + applied + ' widget' + (applied > 1 ? 's' : '') + ' mis à jour) — ' + config.i18n.save_reminder);
+                    completeProgressBar('success', config.i18n.success + ' (' + applied + ' widget' + (applied > 1 ? 's' : '') + ' mis à jour) — ' + config.i18n.save_reminder);
             })
             .catch(function (err) {
                 console.error('[AI Content Filler] Erreur:', err);

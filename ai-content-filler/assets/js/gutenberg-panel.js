@@ -1,5 +1,5 @@
 /**
- * AI Content Filler — Sidebar Gutenberg
+ * TextFlow AI — Sidebar Gutenberg
  * Génère le contenu des blocs natifs WP et Kadence via l'API IA.
  */
 ( function () {
@@ -9,7 +9,6 @@
     var useState    = wp.element.useState;
     var useEffect   = wp.element.useEffect;
     var useRef      = wp.element.useRef;
-    var useCallback = wp.element.useCallback;
     var Fragment    = wp.element.Fragment;
     var config      = aicfGutenbergConfig;
     var i18n        = config.i18n;
@@ -51,6 +50,11 @@
             cssClass: 'aicf-wl-type-heading',
             fields: { content: 'Titre' },
         },
+        'kadence/image': {
+            label: 'Image Kadence',
+            cssClass: 'aicf-wl-type-default',
+            fields: { alt: 'Texte alternatif', caption: 'Légende' },
+        },
         'kadence/infobox': {
             label: 'Info Box',
             cssClass: 'aicf-wl-type-box',
@@ -61,11 +65,11 @@
             cssClass: 'aicf-wl-type-button',
             fields: { text: 'Texte du bouton' },
         },
-        'kadence/testimonials': {
-            label: 'Témoignages',
+        // kadence/testimonial (singulier) = innerBlock dans kadence/testimonials (v3+)
+        'kadence/testimonial': {
+            label: 'Témoignage',
             cssClass: 'aicf-wl-type-testimonial',
-            repeater: 'items',
-            repeaterFields: { content: 'Témoignage', name: 'Nom', occupation: 'Poste' },
+            fields: { title: 'Titre', content: 'Témoignage', name: 'Nom', occupation: 'Poste' },
         },
         'kadence/pane': {
             label: 'Accordéon',
@@ -80,11 +84,27 @@
     };
 
     // Templates de prompt prédéfinis
-    var TEMPLATES = {
-        landing:  "Génère un contenu percutant pour une landing page. Mets en avant les bénéfices, utilise des verbes d'action.",
-        service:  "Rédige le contenu d'une page de services professionnels. Ton sérieux, axé résultats.",
-        about:    "Crée le contenu d'une page À propos. Présente l'équipe, les valeurs et la mission.",
-        home:     "Génère le contenu de la page d'accueil. Accrocheur, orienté conversion.",
+    var PROMPT_TEMPLATES = {
+        landing: {
+            label: 'Landing',
+            prompt: "Page d'atterrissage pour [votre offre]. Objectif : convertir les visiteurs en clients. Messages clairs, arguments percutants, appels à l'action forts.",
+        },
+        service: {
+            label: 'Service',
+            prompt: "Page de service présentant [vos services]. Mettez en avant les avantages, le processus et les résultats concrets pour le client.",
+        },
+        about: {
+            label: 'À propos',
+            prompt: "Page à propos de l'entreprise. Présentez l'histoire, les valeurs, la mission et l'équipe. Ton authentique et engageant.",
+        },
+        home: {
+            label: 'Accueil',
+            prompt: "Page d'accueil du site. Présentez l'activité, les services phares et les avantages concurrentiels. Donnez envie d'explorer le site.",
+        },
+        blog: {
+            label: 'Blog',
+            prompt: "Article de blog sur [sujet]. Contenu informatif, structuré avec des sous-titres, engageant et optimisé SEO.",
+        },
     };
 
     // ---------------------------------------------------------------
@@ -98,7 +118,6 @@
         var val = attributes[ key ];
         if ( val === undefined || val === null ) return '';
         if ( typeof val === 'string' ) return val;
-        // Pour les RichText stockés en HTML, retourner tel quel
         return String( val );
     }
 
@@ -110,7 +129,6 @@
         for ( var i = 0; i < keys.length; i++ ) {
             var val = fields[ keys[ i ] ];
             if ( val && val.trim() ) {
-                // Supprimer les balises HTML pour l'aperçu
                 return val.replace( /<[^>]+>/g, '' ).substring( 0, 50 );
             }
         }
@@ -119,8 +137,6 @@
 
     /**
      * Scan récursif de tous les blocs pour trouver les blocs texte supportés.
-     * @param {Array} blocks - Tableau de blocs Gutenberg
-     * @returns {Array} - Tableau de { id, type, label, cssClass, fields, preview }
      */
     function scanBlocks( blocks ) {
         var result = [];
@@ -133,14 +149,12 @@
             if ( blockDef ) {
                 var fields = {};
 
-                // Champs directs
                 if ( blockDef.fields ) {
                     Object.keys( blockDef.fields ).forEach( function ( fieldKey ) {
                         fields[ fieldKey ] = getAttr( block.attributes, fieldKey );
                     } );
                 }
 
-                // Champs repeater (ex: kadence/testimonials → items[])
                 if ( blockDef.repeater && blockDef.repeaterFields ) {
                     var repKey = blockDef.repeater;
                     var items  = block.attributes[ repKey ] || [];
@@ -162,11 +176,9 @@
                         preview:  getPreview( fields ),
                     };
 
-                    // kadence/advancedheading peut être h1-h6, p, span ou div
-                    // → on envoie toujours le htmlTag réel comme hint pour un contenu adapté
                     if ( block.name === 'kadence/advancedheading' ) {
                         var htmlTag = ( block.attributes && block.attributes.htmlTag ) || 'h2';
-                        entry.hint = 'kadence/advancedheading-' + htmlTag;
+                        entry.apiType = 'kadence/advancedheading-' + htmlTag;
                         if ( htmlTag === 'p' || htmlTag === 'span' || htmlTag === 'div' ) {
                             entry.label    = 'Texte Kadence';
                             entry.cssClass = 'aicf-wl-type-text';
@@ -177,7 +189,6 @@
                 }
             }
 
-            // Récursion dans les blocs imbriqués
             if ( block.innerBlocks && block.innerBlocks.length > 0 ) {
                 result = result.concat( scanBlocks( block.innerBlocks ) );
             }
@@ -187,36 +198,38 @@
     }
 
     /**
-     * Nettoie la valeur d'un champ selon le type de bloc pour éviter les erreurs
-     * de validation Gutenberg (ex: double <p> dans core/paragraph).
-     *
-     * Gutenberg stocke uniquement le contenu INTÉRIEUR dans l'attribut :
-     *   core/paragraph.content  → pas de <p> englobant
-     *   core/heading.content    → pas de <h*> englobant
-     *   core/button.text        → texte brut
+     * Nettoie la valeur d'un champ selon le type de bloc.
      */
     function sanitizeForBlock( blockType, fieldKey, value ) {
         if ( typeof value !== 'string' ) return value;
 
         if ( blockType === 'core/paragraph' && fieldKey === 'content' ) {
-            // Supprimer la balise <p> englobante si présente
             return value.replace( /^<p[^>]*>([\s\S]*?)<\/p>\s*$/i, '$1' ).trim();
         }
 
         if ( blockType === 'core/heading' && fieldKey === 'content' ) {
-            // Supprimer la balise <h1-6> englobante si présente
             return value.replace( /^<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>\s*$/i, '$1' ).trim();
         }
 
-        if ( blockType === 'kadence/advancedheading' && fieldKey === 'content' ) {
-            // Kadence heading : contenu inline uniquement, supprimer les balises englobantes
+        if ( blockType.indexOf( 'kadence/advancedheading' ) === 0 && fieldKey === 'content' ) {
             value = value.replace( /^<p[^>]*>([\s\S]*?)<\/p>\s*$/i, '$1' ).trim();
             value = value.replace( /^<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>\s*$/i, '$1' ).trim();
             return value;
         }
 
         if ( ( blockType === 'core/button' || blockType === 'kadence/singlebtn' ) && fieldKey === 'text' ) {
-            // Texte brut pour les boutons, supprimer toute balise englobante
+            return value.replace( /<[^>]+>/g, '' ).trim();
+        }
+
+        if ( blockType === 'kadence/testimonial' && fieldKey === 'content' ) {
+            return value.replace( /^<p[^>]*>([\s\S]*?)<\/p>\s*$/i, '$1' ).trim();
+        }
+
+        if ( blockType === 'kadence/testimonial' && ( fieldKey === 'title' || fieldKey === 'name' || fieldKey === 'occupation' ) ) {
+            return value.replace( /<[^>]+>/g, '' ).trim();
+        }
+
+        if ( blockType === 'kadence/image' && fieldKey === 'alt' ) {
             return value.replace( /<[^>]+>/g, '' ).trim();
         }
 
@@ -225,95 +238,113 @@
 
     /**
      * Applique le contenu généré aux blocs Gutenberg.
-     * @param {Array} widgets - Tableau de { id, type, content: {} }
+     * Retourne le nombre de blocs mis à jour avec succès.
+     *
+     * Utilise createBlock + replaceBlocks (plus fiable que cloneBlock + replaceBlock,
+     * notamment pour les blocs dont le contenu était vide avant génération).
      */
     function applyContent( widgets ) {
-        var dispatch = wp.data.dispatch( 'core/block-editor' );
-        var select   = wp.data.select( 'core/block-editor' );
+        var dispatch     = wp.data.dispatch( 'core/block-editor' );
+        var select       = wp.data.select( 'core/block-editor' );
+        var appliedCount = 0;
 
         widgets.forEach( function ( widget ) {
-            var content   = widget.content;
-            var blockType = widget.type || '';
+            try {
+                var content = widget.content;
+                var block   = select.getBlock( widget.id );
 
-            // Rétrocompatibilité : content peut être une string
-            if ( typeof content === 'string' ) {
-                content = { content: content };
-            }
-
-            if ( ! content || typeof content !== 'object' ) return;
-
-            var directAttrs    = {};
-            var repeaterUpdates = {}; // { repKey: { index: { field: value } } }
-
-            // Séparer champs directs vs champs repeater (notation pointée)
-            Object.keys( content ).forEach( function ( key ) {
-                if ( key.indexOf( '.' ) === -1 ) {
-                    directAttrs[ key ] = sanitizeForBlock( blockType, key, content[ key ] );
-                } else {
-                    var parts  = key.split( '.' );
-                    var repKey = parts[ 0 ];
-                    var index  = parseInt( parts[ 1 ], 10 );
-                    var field  = parts[ 2 ];
-
-                    if ( ! repeaterUpdates[ repKey ] ) {
-                        repeaterUpdates[ repKey ] = {};
-                    }
-                    if ( ! repeaterUpdates[ repKey ][ index ] ) {
-                        repeaterUpdates[ repKey ][ index ] = {};
-                    }
-                    repeaterUpdates[ repKey ][ index ][ field ] = content[ key ];
+                if ( ! block ) {
+                    console.warn( '[TextFlow] Bloc introuvable dans l\'éditeur :', widget.id );
+                    return;
                 }
-            } );
 
-            // Blocs RichText : le composant React garde un état interne qui ne se
-            // réinitialise pas avec updateBlockAttributes() seul → on utilise
-            // replaceBlock() avec un clone pour forcer la réinstanciation.
-            var RICH_TEXT_BLOCKS = [
-                'core/paragraph',
-                'core/heading',
-                'core/quote',
-                'kadence/advancedheading',
-            ];
+                var blockType = block.name;
 
-            // Appliquer les champs directs
-            if ( Object.keys( directAttrs ).length > 0 ) {
-                if ( RICH_TEXT_BLOCKS.indexOf( blockType ) !== -1 ) {
-                    var block = select.getBlock( widget.id );
-                    if ( block && wp.blocks && wp.blocks.cloneBlock ) {
-                        var newBlock = wp.blocks.cloneBlock( block, directAttrs );
-                        dispatch.replaceBlock( widget.id, newBlock );
+                if ( typeof content === 'string' ) {
+                    content = { content: content };
+                }
+
+                if ( ! content || typeof content !== 'object' ) {
+                    console.warn( '[TextFlow] Contenu invalide pour le bloc :', widget.id, content );
+                    return;
+                }
+
+                var directAttrs     = {};
+                var repeaterUpdates = {};
+
+                Object.keys( content ).forEach( function ( key ) {
+                    if ( key.indexOf( '.' ) === -1 ) {
+                        directAttrs[ key ] = sanitizeForBlock( blockType, key, content[ key ] );
+                    } else {
+                        var parts  = key.split( '.' );
+                        var repKey = parts[ 0 ];
+                        var index  = parseInt( parts[ 1 ], 10 );
+                        var field  = parts[ 2 ];
+
+                        if ( ! repeaterUpdates[ repKey ] ) {
+                            repeaterUpdates[ repKey ] = {};
+                        }
+                        if ( ! repeaterUpdates[ repKey ][ index ] ) {
+                            repeaterUpdates[ repKey ][ index ] = {};
+                        }
+                        repeaterUpdates[ repKey ][ index ][ field ] = content[ key ];
+                    }
+                } );
+
+                // createBlock + replaceBlocks : force un remontage complet du composant,
+                // ce qui règle les cas où le bloc était vide (RichText ne se met pas à
+                // jour via updateBlockAttributes si son état interne est « vide »).
+                if ( Object.keys( directAttrs ).length > 0 ) {
+                    var mergedAttrs = Object.assign( {}, block.attributes, directAttrs );
+                    if ( wp.blocks && wp.blocks.createBlock ) {
+                        var newBlock = wp.blocks.createBlock( block.name, mergedAttrs, block.innerBlocks || [] );
+                        dispatch.replaceBlocks( [ widget.id ], [ newBlock ] );
                     } else {
                         dispatch.updateBlockAttributes( widget.id, directAttrs );
                     }
-                } else {
-                    dispatch.updateBlockAttributes( widget.id, directAttrs );
+                    appliedCount++;
                 }
+
+                // Repeater (ex. items d'un bloc avec tableau d'objets).
+                // Utilise le snapshot « block » pris avant le replaceBlocks.
+                if ( Object.keys( repeaterUpdates ).length > 0 ) {
+                    Object.keys( repeaterUpdates ).forEach( function ( repKey ) {
+                        var currentItems = JSON.parse(
+                            JSON.stringify( block.attributes[ repKey ] || [] )
+                        );
+                        var updates = repeaterUpdates[ repKey ];
+
+                        Object.keys( updates ).forEach( function ( idx ) {
+                            var i = parseInt( idx, 10 );
+                            if ( ! currentItems[ i ] ) {
+                                currentItems[ i ] = {};
+                            }
+                            Object.assign( currentItems[ i ], updates[ idx ] );
+                        } );
+
+                        var attrPatch       = {};
+                        attrPatch[ repKey ] = currentItems;
+
+                        // Cherche le bloc courant (son clientId peut avoir changé après
+                        // le replaceBlocks ci-dessus si directAttrs était non vide).
+                        var targetBlock = select.getBlock( widget.id ) || block;
+                        var mergedRep   = Object.assign( {}, targetBlock.attributes, attrPatch );
+
+                        if ( wp.blocks && wp.blocks.createBlock ) {
+                            var repBlock = wp.blocks.createBlock( targetBlock.name, mergedRep, targetBlock.innerBlocks || [] );
+                            dispatch.replaceBlocks( [ targetBlock.clientId ], [ repBlock ] );
+                        } else {
+                            dispatch.updateBlockAttributes( targetBlock.clientId, attrPatch );
+                        }
+                        appliedCount++;
+                    } );
+                }
+            } catch ( e ) {
+                console.error( '[TextFlow] Erreur lors de l\'application du contenu pour le bloc', widget.id, e );
             }
-
-            // Appliquer les repeaters
-            Object.keys( repeaterUpdates ).forEach( function ( repKey ) {
-                var block = select.getBlock( widget.id );
-                if ( ! block ) return;
-
-                // Cloner le tableau existant
-                var currentItems = JSON.parse(
-                    JSON.stringify( block.attributes[ repKey ] || [] )
-                );
-                var updates = repeaterUpdates[ repKey ];
-
-                Object.keys( updates ).forEach( function ( idx ) {
-                    var i = parseInt( idx, 10 );
-                    if ( ! currentItems[ i ] ) {
-                        currentItems[ i ] = {};
-                    }
-                    Object.assign( currentItems[ i ], updates[ idx ] );
-                } );
-
-                var attrUpdate       = {};
-                attrUpdate[ repKey ] = currentItems;
-                dispatch.updateBlockAttributes( widget.id, attrUpdate );
-            } );
         } );
+
+        return appliedCount;
     }
 
     // ---------------------------------------------------------------
@@ -349,10 +380,6 @@
         var isGenerating  = _generating[ 0 ];
         var setGenerating = _generating[ 1 ];
 
-        var _dailyRemaining   = useState( config.dailyRemaining );
-        var dailyRemaining    = _dailyRemaining[ 0 ];
-        var setDailyRemaining = _dailyRemaining[ 1 ];
-
         var _progress   = useState( 0 );
         var progress    = _progress[ 0 ];
         var setProgress = _progress[ 1 ];
@@ -361,21 +388,30 @@
         var eta    = _eta[ 0 ];
         var setEta = _eta[ 1 ];
 
+        // IDs des blocs dont le contenu a été appliqué (état "done")
+        var _blocksApplied        = useState( [] );
+        var blocksApplied         = _blocksApplied[ 0 ];
+        var setBlocksApplied      = _blocksApplied[ 1 ];
+
+        // IDs des blocs qui ont un historique (bouton revert visible)
+        var _blocksWithHistory    = useState( [] );
+        var blocksWithHistory     = _blocksWithHistory[ 0 ];
+        var setBlocksWithHistory  = _blocksWithHistory[ 1 ];
+
+        // ID du bloc en cours de régénération individuelle
+        var _regenBlockId   = useState( null );
+        var regenBlockId    = _regenBlockId[ 0 ];
+        var setRegenBlockId = _regenBlockId[ 1 ];
+
+        // Historique du contenu (ref → pas de re-render quand on sauvegarde)
+        var historyRef = useRef( {} );
+
         // Refs pour le timer de progression
         var timerRef = useRef( null );
         var startRef = useRef( 0 );
         var durRef   = useRef( 5000 );
 
-        var isPro        = !! config.isPro;
-        var freeBlocks   = config.freeBlocks || [];
-
-        // Vérifie si un bloc est autorisé en free
-        function isBlockAllowed( type ) {
-            if ( isPro ) return true;
-            return freeBlocks.indexOf( type ) !== -1;
-        }
-
-        // Démarre / arrête le timer de progression selon isGenerating
+        // Timer de progression
         useEffect( function () {
             if ( ! isGenerating ) {
                 if ( timerRef.current ) {
@@ -398,27 +434,43 @@
             };
         }, [ isGenerating ] );
 
-        // Applique un template dans le prompt
+        // ---- Historique ----
+
+        function saveBlockToHistory( block ) {
+            historyRef.current[ block.id ] = JSON.parse( JSON.stringify( block.fields ) );
+        }
+
+        function saveAllToHistory( blocks ) {
+            blocks.forEach( function ( b ) { saveBlockToHistory( b ); } );
+            setBlocksWithHistory( Object.keys( historyRef.current ) );
+        }
+
+        // ---- Actions templates ----
+
         function onTemplateClick( key ) {
-            if ( ! isPro && config.freeTemplates.indexOf( key ) === -1 ) return;
             if ( activeTemplate === key ) {
                 setActiveTemplate( '' );
                 setPrompt( '' );
             } else {
                 setActiveTemplate( key );
-                setPrompt( TEMPLATES[ key ] || '' );
+                setPrompt( PROMPT_TEMPLATES[ key ] ? PROMPT_TEMPLATES[ key ].prompt : '' );
             }
         }
 
-        // Scanner les blocs de la page
+        // ---- Scanner ----
+
+        function doScan() {
+            var allBlocks = wp.data.select( 'core/block-editor' ).getBlocks();
+            return scanBlocks( allBlocks );
+        }
+
         function onScan() {
             if ( ! prompt.trim() ) {
                 setStatus( { type: 'error', message: i18n.empty_prompt } );
                 return;
             }
 
-            var allBlocks = wp.data.select( 'core/block-editor' ).getBlocks();
-            var found     = scanBlocks( allBlocks );
+            var found = doScan();
 
             if ( found.length === 0 ) {
                 setStatus( { type: 'error', message: i18n.no_blocks } );
@@ -426,25 +478,36 @@
             }
 
             setScanned( found );
-            // Pré-sélectionner tous les blocs autorisés
-            setSelected( found.filter( function ( b ) { return isBlockAllowed( b.type ); } ).map( function ( b ) { return b.id; } ) );
+            setSelected( found.map( function ( b ) { return b.id; } ) );
             setStatus( { type: 'idle', message: found.length + ' ' + i18n.blocks_found } );
             setStep( 'select' );
         }
 
-        // Tout sélectionner / désélectionner
+        // Re-scanner sans revenir au prompt (mise à jour de la liste)
+        function onRescan() {
+            var found = doScan();
+
+            if ( found.length === 0 ) {
+                setStatus( { type: 'error', message: i18n.no_blocks } );
+                return;
+            }
+
+            setScanned( found );
+            setSelected( found.map( function ( b ) { return b.id; } ) );
+            setStatus( { type: 'idle', message: found.length + ' ' + i18n.blocks_found } );
+        }
+
+        // ---- Actions liste ----
+
         function onToggleAll() {
-            var allowed = scanned.filter( function ( b ) { return isBlockAllowed( b.type ); } ).map( function ( b ) { return b.id; } );
-            if ( selected.length === allowed.length ) {
+            if ( selected.length === scanned.length ) {
                 setSelected( [] );
             } else {
-                setSelected( allowed );
+                setSelected( scanned.map( function ( b ) { return b.id; } ) );
             }
         }
 
-        // Coche individuelle
-        function onToggleBlock( id, isAllowed ) {
-            if ( ! isAllowed ) return;
+        function onToggleBlock( id ) {
             var idx = selected.indexOf( id );
             if ( idx === -1 ) {
                 setSelected( selected.concat( [ id ] ) );
@@ -453,36 +516,121 @@
             }
         }
 
-        // Lancer la génération
+        // Retirer un bloc de la liste (sans revenir au prompt)
+        function onRemoveBlock( id ) {
+            var newScanned  = scanned.filter( function ( b ) { return b.id !== id; } );
+            var newSelected = selected.filter( function ( s ) { return s !== id; } );
+            setScanned( newScanned );
+            setSelected( newSelected );
+
+            if ( newScanned.length === 0 ) {
+                onBack();
+                setStatus( { type: 'error', message: i18n.no_blocks } );
+            }
+        }
+
+        // Restaurer le contenu précédent d'un bloc
+        function onRevertBlock( id ) {
+            var previousFields = historyRef.current[ id ];
+            if ( ! previousFields ) return;
+
+            applyContent( [ { id: id, content: previousFields } ] );
+
+            delete historyRef.current[ id ];
+            setBlocksWithHistory( Object.keys( historyRef.current ) );
+            setBlocksApplied( blocksApplied.filter( function ( bid ) { return bid !== id; } ) );
+            setStatus( { type: 'success', message: 'Contenu précédent restauré.' } );
+        }
+
+        // Régénérer un seul bloc
+        function onRegenerateBlock( id ) {
+            if ( isGenerating || regenBlockId ) return;
+
+            var block = null;
+            for ( var i = 0; i < scanned.length; i++ ) {
+                if ( scanned[ i ].id === id ) { block = scanned[ i ]; break; }
+            }
+            if ( ! block || ! prompt.trim() ) return;
+
+            saveBlockToHistory( block );
+            setBlocksWithHistory( Object.keys( historyRef.current ) );
+            setRegenBlockId( id );
+            setStatus( { type: 'loading', message: 'Régénération du bloc...' } );
+
+            var pageId = wp.data.select( 'core/editor' )
+                ? wp.data.select( 'core/editor' ).getCurrentPostId()
+                : 0;
+
+            fetch( config.restUrl, {
+                method:  'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce':   config.nonce,
+                },
+                body: JSON.stringify( {
+                    page_id:     pageId,
+                    user_prompt: prompt,
+                    widgets:     [ { id: block.id, type: block.apiType || block.type, fields: block.fields } ],
+                } ),
+            } )
+            .then( function ( res ) {
+                return res.json().then( function ( data ) {
+                    return { ok: res.ok, data: data };
+                } );
+            } )
+            .then( function ( res ) {
+                if ( ! res.ok ) {
+                    var msg = ( res.data && res.data.message ) ? res.data.message : i18n.error;
+                    throw new Error( msg );
+                }
+                var data = res.data;
+                if ( data.widgets && Array.isArray( data.widgets ) ) {
+                    applyContent( data.widgets );
+                }
+                setBlocksApplied( function ( prev ) {
+                    return prev.indexOf( id ) === -1 ? prev.concat( [ id ] ) : prev;
+                } );
+                setStatus( { type: 'success', message: 'Bloc régénéré ! — ' + i18n.save_reminder } );
+            } )
+            .catch( function ( err ) {
+                setStatus( { type: 'error', message: err.message || i18n.error } );
+            } )
+            .finally( function () {
+                setRegenBlockId( null );
+            } );
+        }
+
+        // ---- Génération ----
+
         function onGenerate() {
             if ( isGenerating ) return;
             if ( selected.length === 0 ) return;
 
             var blocksToSend = scanned.filter( function ( b ) {
-                return selected.indexOf( b.id ) !== -1 && isBlockAllowed( b.type );
+                return selected.indexOf( b.id ) !== -1;
             } );
 
             if ( blocksToSend.length === 0 ) return;
 
-            // Récupérer le page_id depuis l'éditeur
             var pageId = wp.data.select( 'core/editor' )
                 ? wp.data.select( 'core/editor' ).getCurrentPostId()
                 : 0;
+
+            // Sauvegarder l'état actuel avant génération
+            saveAllToHistory( blocksToSend );
 
             durRef.current = Math.min( 60000, Math.max( 5000, 3000 + blocksToSend.length * 2500 ) );
             setProgress( 0 );
             setEta( Math.round( durRef.current / 1000 ) );
             setGenerating( true );
             setStep( 'generating' );
-            setStatus( { type: 'loading', message: i18n.loading } );
+            setStatus( { type: 'loading', message: i18n.loading + ' (' + blocksToSend.length + ' bloc' + ( blocksToSend.length > 1 ? 's' : '' ) + ')' } );
 
             var payload = {
                 page_id:     pageId,
                 user_prompt: prompt,
                 widgets:     blocksToSend.map( function ( b ) {
-                    var w = { id: b.id, type: b.type, fields: b.fields };
-                    if ( b.hint ) { w.hint = b.hint; }
-                    return w;
+                    return { id: b.id, type: b.apiType || b.type, fields: b.fields };
                 } ),
             };
 
@@ -506,18 +654,22 @@
                 }
 
                 var data = res.data;
+                var appliedCount = 0;
                 if ( data.widgets && Array.isArray( data.widgets ) ) {
-                    applyContent( data.widgets );
-                }
+                    appliedCount = applyContent( data.widgets );
 
-                // Mettre à jour le compteur quotidien
-                if ( typeof data.dailyRemaining !== 'undefined' ) {
-                    setDailyRemaining( data.dailyRemaining );
+                    // Marquer les blocs comme appliqués
+                    var appliedIds = data.widgets.map( function ( w ) { return w.id; } );
+                    setBlocksApplied( function ( prev ) {
+                        var combined = prev.concat( appliedIds );
+                        return combined.filter( function ( v, i ) { return combined.indexOf( v ) === i; } );
+                    } );
                 }
 
                 setProgress( 100 );
+                var successMsg = i18n.success + ' (' + appliedCount + '/' + blocksToSend.length + ' bloc' + ( blocksToSend.length > 1 ? 's' : '' ) + ') — ' + i18n.save_reminder;
                 setTimeout( function () {
-                    setStatus( { type: 'success', message: i18n.success } );
+                    setStatus( { type: 'success', message: successMsg } );
                     setStep( 'select' );
                     setGenerating( false );
                 }, 350 );
@@ -533,51 +685,26 @@
         function onBack() {
             setStep( 'prompt' );
             setStatus( { type: 'idle', message: i18n.idle } );
+            setBlocksApplied( [] );
+            setBlocksWithHistory( [] );
+            historyRef.current = {};
         }
 
         // ---------------------------------------------------------------
         // Rendu
         // ---------------------------------------------------------------
 
-        // Badge plan
-        var planBadge = el( 'span', {
-            className: 'aicf-gb-plan-badge ' + ( isPro ? 'aicf-plan-pro' : 'aicf-plan-free' ),
-        }, isPro ? i18n.pro_plan : i18n.free_plan );
-
-        // Compteur quotidien
-        var dailyInfo = null;
-        if ( ! isPro ) {
-            var limitClass = 'aicf-gb-daily';
-            if ( dailyRemaining <= 2 ) limitClass += ' aicf-daily-limit-low';
-            if ( dailyRemaining === 0 ) limitClass += ' aicf-daily-limit-reached';
-            dailyInfo = el( 'div', { className: limitClass },
-                dailyRemaining === 0
-                    ? i18n.daily_limit
-                    : dailyRemaining + ' ' + i18n.daily_remaining
-            );
-        } else {
-            dailyInfo = el( 'div', { className: 'aicf-gb-daily' }, i18n.unlimited );
-        }
-
-        // Templates
-        var templateBtns = Object.keys( TEMPLATES ).map( function ( key ) {
-            var isFreeTemplate = config.freeTemplates.indexOf( key ) !== -1;
-            var isLocked       = ! isPro && ! isFreeTemplate;
-            var isActive       = activeTemplate === key;
-
-            var cls = 'aicf-tpl-btn';
-            if ( isActive ) cls += ' aicf-tpl-active';
-            if ( isLocked ) cls += ' aicf-tpl-locked';
-
-            var label = key.charAt( 0 ).toUpperCase() + key.slice( 1 );
-            if ( isLocked ) label += ' 🔒';
+        // Boutons de templates
+        var templateBtns = Object.keys( PROMPT_TEMPLATES ).map( function ( key ) {
+            var tpl    = PROMPT_TEMPLATES[ key ];
+            var isActive = activeTemplate === key;
+            var cls    = 'aicf-tpl-btn' + ( isActive ? ' aicf-tpl-active' : '' );
 
             return el( 'button', {
                 key:       key,
                 className: cls,
                 onClick:   function () { onTemplateClick( key ); },
-                title:     isLocked ? i18n.pro_feature : '',
-            }, label );
+            }, tpl.label );
         } );
 
         // Zone templates
@@ -596,13 +723,13 @@
             rows:        4,
         } );
 
-        // Statut
+        // Statut / progress bar
         var statusBar;
         if ( status.type === 'loading' ) {
-            var etaText = eta > 0 ? '~' + eta + 's' : '…';
+            var etaText = eta > 0 ? '~' + eta + 's' : '\u2026';
             statusBar = el( 'div', { className: 'aicf-gb-status aicf-status-loading' },
                 el( 'span', { className: 'aicf-progress-text' },
-                    status.message + ' — ',
+                    status.message + ' \u2014 ',
                     el( 'span', { className: 'aicf-progress-eta' }, etaText )
                 ),
                 el( 'div', { className: 'aicf-progress-bar-track' },
@@ -618,7 +745,6 @@
         // ---- Étape : prompt ----
         if ( step === 'prompt' ) {
             return el( 'div', { className: 'aicf-gb-panel' },
-                el( 'div', { className: 'aicf-gb-header-info' }, planBadge, dailyInfo ),
                 templatesRow,
                 promptArea,
                 el( 'button', {
@@ -630,48 +756,92 @@
         }
 
         // ---- Étape : select / generating ----
-        var isSelecting  = step === 'select';
-        var allowedCount = scanned.filter( function ( b ) { return isBlockAllowed( b.type ); } ).length;
         var selectedCount = selected.length;
+        var totalCount    = scanned.length;
 
         // Liste des blocs
         var blockItems = scanned.map( function ( block ) {
-            var allowed  = isBlockAllowed( block.type );
-            var isChecked = selected.indexOf( block.id ) !== -1;
+            var isChecked  = selected.indexOf( block.id ) !== -1;
+            var isDone     = blocksApplied.indexOf( block.id ) !== -1;
+            var hasHistory = blocksWithHistory.indexOf( block.id ) !== -1;
+            var isRegen    = regenBlockId === block.id;
 
-            var itemCls = 'aicf-wl-item';
-            if ( ! allowed ) itemCls += ' aicf-wl-item-locked';
+            var itemCls = 'aicf-wl-item' + ( isDone ? ' aicf-wl-item-done' : '' );
+
+            // Badge compteur de champs (si > 1 champ direct)
+            var directFieldCount = Object.keys( block.fields ).filter( function ( k ) {
+                return k.indexOf( '.' ) === -1;
+            } ).length;
+            var fieldBadge = null;
+            if ( directFieldCount > 1 ) {
+                fieldBadge = el( 'span', { className: 'aicf-wl-field-count' },
+                    directFieldCount + ' champs'
+                );
+            }
+
+            // Boutons d'action par bloc
+            var actionBtns = [];
+
+            // Bouton régénérer
+            actionBtns.push( el( 'button', {
+                key:       'regen-' + block.id,
+                className: 'aicf-widget-regen' + ( isRegen ? ' aicf-spinning' : '' ),
+                title:     'Régénérer ce bloc',
+                disabled:  isGenerating || !! regenBlockId,
+                onClick:   function ( e ) { e.stopPropagation(); onRegenerateBlock( block.id ); },
+            }, '\u21bb' ) );
+
+            // Bouton revert (visible uniquement si historique disponible)
+            if ( hasHistory ) {
+                actionBtns.push( el( 'button', {
+                    key:       'revert-' + block.id,
+                    className: 'aicf-widget-revert',
+                    title:     'Restaurer le contenu précédent',
+                    disabled:  isGenerating || !! regenBlockId,
+                    onClick:   function ( e ) { e.stopPropagation(); onRevertBlock( block.id ); },
+                }, '\u21a9' ) );
+            }
+
+            // Bouton retirer
+            actionBtns.push( el( 'button', {
+                key:       'remove-' + block.id,
+                className: 'aicf-widget-remove',
+                title:     'Exclure ce bloc',
+                disabled:  isGenerating || !! regenBlockId,
+                onClick:   function ( e ) { e.stopPropagation(); onRemoveBlock( block.id ); },
+            }, '\u00d7' ) );
 
             return el( 'div', { key: block.id, className: itemCls },
                 el( 'label', { className: 'aicf-wl-checkbox-label' },
                     el( 'input', {
                         type:     'checkbox',
                         checked:  isChecked,
-                        disabled: ! allowed || isGenerating,
-                        onChange: function () { onToggleBlock( block.id, allowed ); },
+                        disabled: isGenerating || !! regenBlockId,
+                        onChange: function () { onToggleBlock( block.id ); },
                     } ),
                     el( 'span', { className: 'aicf-wl-checkmark' } )
                 ),
                 el( 'div', { className: 'aicf-wl-info' },
                     el( 'span', { className: 'aicf-wl-type ' + block.cssClass },
                         block.label,
-                        ! allowed && el( 'span', { className: 'aicf-wl-pro-badge' }, 'PRO' )
+                        fieldBadge
                     ),
-                    block.preview && el( 'span', { className: 'aicf-wl-preview' }, block.preview )
-                )
+                    el( 'span', { className: 'aicf-wl-preview' }, block.preview )
+                ),
+                el( 'div', { className: 'aicf-wl-actions' }, actionBtns )
             );
         } );
 
         var blockList = el( 'div', { className: 'aicf-gb-block-list' },
             el( 'div', { className: 'aicf-wl-header' },
                 el( 'span', { className: 'aicf-wl-count' },
-                    selectedCount + ' / ' + allowedCount + ' ' + i18n.selected
+                    selectedCount + ' / ' + totalCount + ' ' + i18n.selected
                 ),
                 el( 'button', {
                     className: 'aicf-wl-toggle-all',
                     onClick:   onToggleAll,
-                    disabled:  isGenerating,
-                }, selectedCount === allowedCount ? i18n.deselect_all : i18n.select_all )
+                    disabled:  isGenerating || !! regenBlockId,
+                }, selectedCount === totalCount ? i18n.deselect_all : i18n.select_all )
             ),
             el( 'div', { className: 'aicf-wl-items' }, blockItems )
         );
@@ -682,18 +852,23 @@
             el( 'button', {
                 className: 'aicf-gb-btn aicf-gb-btn-back',
                 onClick:   onBack,
-                disabled:  isGenerating,
+                disabled:  isGenerating || !! regenBlockId,
                 title:     'Retour au prompt',
             }, i18n.back_btn ),
             el( 'button', {
+                className: 'aicf-gb-btn aicf-gb-btn-rescan',
+                onClick:   onRescan,
+                disabled:  isGenerating || !! regenBlockId,
+                title:     'Re-scanner les blocs',
+            }, i18n.rescan_btn ),
+            el( 'button', {
                 className: 'aicf-gb-btn aicf-gb-btn-primary aicf-gb-btn-flex',
                 onClick:   onGenerate,
-                disabled:  isGenerating || selectedCount === 0,
+                disabled:  isGenerating || !! regenBlockId || selectedCount === 0,
             }, isGenerating ? i18n.loading : generateLabel )
         );
 
         return el( 'div', { className: 'aicf-gb-panel' },
-            el( 'div', { className: 'aicf-gb-header-info' }, planBadge, dailyInfo ),
             templatesRow,
             promptArea,
             blockList,
@@ -709,12 +884,10 @@
     wp.plugins.registerPlugin( 'aicf-gutenberg-panel', {
         render: function () {
             return el( Fragment, null,
-                // Entrée dans le menu "Plus d'outils"
                 el( wp.editPost.PluginSidebarMoreMenuItem, {
                     target: 'aicf-sidebar',
                     icon:   'superhero-alt',
                 }, i18n.panelTitle ),
-                // La sidebar
                 el( wp.editPost.PluginSidebar, {
                     name:  'aicf-sidebar',
                     title: i18n.panelTitle,

@@ -1,10 +1,10 @@
-=== AI Content Filler ===
+=== TextFlow AI ===
 Contributors: nicolombe
 Tags: ai, content generation, gutenberg, elementor, openai
 Requires at least: 5.8
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.0.8
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -12,7 +12,7 @@ Generate content for your Gutenberg and Elementor pages in one click using AI (C
 
 == Description ==
 
-AI Content Filler connects your WordPress editor to leading AI APIs (Anthropic Claude, OpenAI, DeepSeek) to automatically write content for your Gutenberg blocks and Elementor widgets. Configure a client brief once, then generate contextual content for every page in one click — without leaving your editor.
+TextFlow AI connects your WordPress editor to leading AI APIs (Anthropic Claude, OpenAI, DeepSeek) to automatically write content for your Gutenberg blocks and Elementor widgets. Configure a client brief once, then generate contextual content for every page in one click — without leaving your editor.
 
 **Supported editors:**
 
@@ -52,10 +52,10 @@ The free plan supports the most commonly used blocks and widgets. Upgrading to P
 
 1. Upload the plugin folder to `/wp-content/plugins/`
 2. Activate the plugin via the **Plugins** menu in WordPress
-3. Go to **Settings > AI Content Filler**
+3. Go to **Settings > TextFlow AI**
 4. Enter your API key (Anthropic, OpenAI, or DeepSeek)
 5. Write your client brief (business context, editorial tone, target audience, keywords)
-6. Open any page in the Gutenberg or Elementor editor — the AI Content Filler panel will appear
+6. Open any page in the Gutenberg or Elementor editor — the TextFlow AI panel will appear
 
 == Frequently Asked Questions ==
 

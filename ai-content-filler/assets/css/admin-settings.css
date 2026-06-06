@@ -404,14 +404,112 @@
     background: #fffbeb;
     border-left: 4px solid #f59e0b;
     color: #92400e;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
 .aicf-notice-upgrade-content {
+    flex: 1;
+}
+
+.aicf-notice-upgrade-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.aicf-btn-upgrade {
+    background: #f59e0b;
+    color: #111827 !important;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 6px 14px;
+    border-radius: 5px;
+    text-decoration: none !important;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+
+.aicf-btn-upgrade:hover {
+    background: #d97706;
+    color: #111827 !important;
+}
+
+.aicf-btn-license-key {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: #92400e;
+    font-weight: 600;
+    font-size: 12px;
+    text-decoration: none;
+    border-bottom: 1px dashed #d97706;
+    padding-bottom: 1px;
+    white-space: nowrap;
+    line-height: inherit;
+}
+
+.aicf-btn-license-key:hover {
+    color: #451a03;
+    border-bottom-style: solid;
+}
+
+/* ------ Formulaire inline d'activation de licence ------ */
+.aicf-license-inline-form {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 4px;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(0,0,0,0.08);
 }
+
+.aicf-license-key-input {
+    flex: 1 1 200px;
+    max-width: 280px;
+    padding: 6px 10px;
+    border: 1px solid rgba(0,0,0,0.2);
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: monospace;
+    letter-spacing: 0.05em;
+}
+
+.aicf-btn-activate-license {
+    padding: 6px 14px;
+    background: #059669;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.aicf-btn-activate-license:hover { background: #047857; }
+.aicf-btn-activate-license:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.aicf-btn-cancel-license {
+    padding: 6px 12px;
+    background: transparent;
+    color: rgba(0,0,0,0.45);
+    border: 1px solid rgba(0,0,0,0.18);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.aicf-btn-cancel-license:hover { color: rgba(0,0,0,0.7); border-color: rgba(0,0,0,0.3); }
+
+.aicf-license-result { font-size: 12px; }
+.aicf-license-result-success { color: #059669; font-weight: 600; }
+.aicf-license-result-error   { color: #dc2626; }
 
 /* ------ Pro locked state ------ */
 .aicf-pro-locked {

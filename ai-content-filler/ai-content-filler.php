@@ -1,14 +1,14 @@
 <?php
 /**
- * Plugin Name: TextFlow
- * Plugin URI:  https://textflowlab.com/ai-content-filler
+ * Plugin Name: TextFlow AI
+ * Plugin URI:  https://textflowlab.com
  * Description: Generate content for your Gutenberg blocks and Elementor widgets in one click using AI (Claude, GPT-4o, DeepSeek).
- * Version:     1.0.8
+ * Version:     1.2.0
  * Author:      nicolombe
  * Author URI:  https://textflowlab.com
  * License:     GPL-2.0+
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
- * Text Domain: ai-content-filler
+ * Text Domain: textflow-ai
  * Domain Path: /languages
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -20,25 +20,21 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // Constantes du plugin
-define( 'AICF_VERSION', '1.0.8' );
-define( 'AICF_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
-define( 'AICF_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-define( 'AICF_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
+define( 'TXFLOW_VERSION', '1.2.0' );
+define( 'TXFLOW_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+define( 'TXFLOW_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+define( 'TXFLOW_PLUGIN_BASENAME', plugin_basename( __FILE__ ) );
 
-// ---------------------------------------------------------------
-// Freemius SDK — doit être chargé AVANT plugins_loaded pour que
-// le SDK puisse enregistrer ses propres hooks WordPress.
-// ---------------------------------------------------------------
-require_once AICF_PLUGIN_DIR . 'includes/class-license.php';
-require_once AICF_PLUGIN_DIR . 'includes/freemius-init.php';
+// Charger Freemius AVANT plugins_loaded
+require_once TXFLOW_PLUGIN_DIR . 'includes/freemius-init.php';
 
 /**
  * Classe principale du plugin.
  * Orchestre le chargement des composants et vérifie les dépendances.
  */
-final class AI_Content_Filler {
+final class TextFlow_AI {
 
-    /** @var AI_Content_Filler|null Instance unique (singleton) */
+    /** @var TextFlow_AI|null Instance unique (singleton) */
     private static $instance = null;
 
     /**
@@ -60,10 +56,10 @@ final class AI_Content_Filler {
      * Charge les fichiers de classes nécessaires.
      */
     private function load_dependencies() {
-        require_once AICF_PLUGIN_DIR . 'includes/class-settings.php';
-        require_once AICF_PLUGIN_DIR . 'includes/class-api-handler.php';
-        require_once AICF_PLUGIN_DIR . 'includes/class-elementor-bridge.php';
-        require_once AICF_PLUGIN_DIR . 'includes/class-gutenberg-bridge.php';
+        require_once TXFLOW_PLUGIN_DIR . 'includes/class-settings.php';
+        require_once TXFLOW_PLUGIN_DIR . 'includes/class-api-handler.php';
+        require_once TXFLOW_PLUGIN_DIR . 'includes/class-elementor-bridge.php';
+        require_once TXFLOW_PLUGIN_DIR . 'includes/class-gutenberg-bridge.php';
     }
 
     /**
@@ -71,42 +67,30 @@ final class AI_Content_Filler {
      */
     private function init_hooks() {
         // Page de réglages admin
-        AICF_Settings::get_instance();
+        TXFLOW_Settings::get_instance();
 
         // Endpoint REST API + injection dans l'éditeur Elementor
-        AICF_Elementor_Bridge::get_instance();
+        TXFLOW_Elementor_Bridge::get_instance();
 
         // Sidebar dans l'éditeur Gutenberg
-        AICF_Gutenberg_Bridge::get_instance();
+        TXFLOW_Gutenberg_Bridge::get_instance();
 
         // Lien rapide vers les réglages depuis la page des plugins
-        add_filter( 'plugin_action_links_' . AICF_PLUGIN_BASENAME, array( $this, 'add_settings_link' ) );
-
-        // Vérification qu'Elementor est actif
-        add_action( 'admin_notices', array( $this, 'check_elementor_dependency' ) );
+        add_filter( 'plugin_action_links_' . TXFLOW_PLUGIN_BASENAME, array( $this, 'add_settings_link' ) );
     }
 
     /**
      * Ajoute un lien "Réglages" sur la page des plugins.
      */
     public function add_settings_link( $links ) {
-        $settings_link = '<a href="' . esc_url( admin_url( 'options-general.php?page=ai-content-filler' ) ) . '">'
-            . esc_html__( 'Réglages', 'ai-content-filler' ) . '</a>';
+        $settings_link = '<a href="' . esc_url( admin_url( 'options-general.php?page=textflow-ai' ) ) . '">'
+            . esc_html__( 'Réglages', 'textflow-ai' ) . '</a>';
         array_unshift( $links, $settings_link );
         return $links;
-    }
-
-    /**
-     * Affiche un avertissement si ni Elementor ni Gutenberg ne sont disponibles.
-     * Le plugin fonctionne avec l'un ou l'autre — aucun avertissement si Gutenberg est actif.
-     */
-    public function check_elementor_dependency() {
-        // Gutenberg est intégré à WordPress depuis 5.0 — toujours disponible
-        // On n'affiche donc plus d'avertissement si Elementor est absent.
     }
 }
 
 // Démarrage du plugin après le chargement de tous les plugins
 add_action( 'plugins_loaded', function () {
-    AI_Content_Filler::get_instance();
+    TextFlow_AI::get_instance();
 } );

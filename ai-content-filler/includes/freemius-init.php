@@ -1,56 +1,48 @@
 <?php
 /**
- * Initialisation du SDK Freemius.
- * Code genere par le wizard Freemius, adapte a l'architecture du plugin.
+ * Initialisation du SDK Freemius pour TextFlow AI.
+ * Chargé avant plugins_loaded pour garantir la disponibilité du SDK.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-if ( ! function_exists( 'aicf_fs' ) ) {
-    // Create a helper function for easy SDK access.
-    function aicf_fs() {
-        global $aicf_fs;
+if ( ! function_exists( 'txflow_fs' ) ) {
 
-        if ( ! isset( $aicf_fs ) ) {
-            // Include Freemius SDK.
+    function txflow_fs() {
+        global $txflow_fs;
+
+        if ( ! isset( $txflow_fs ) ) {
+            // Inclure le SDK Freemius
             require_once dirname( __FILE__ ) . '/../vendor/freemius/start.php';
 
-            $aicf_fs = fs_dynamic_init( array(
+            $txflow_fs = fs_dynamic_init( array(
                 'id'                  => '24812',
-                'slug'                => 'textflow',
+                'slug'                => 'textflow-ai',
+                'premium_slug'        => 'textflow-ai-pro',
                 'type'                => 'plugin',
                 'public_key'          => 'pk_4948ceebe34298f0b4c10d565e2a5',
                 'is_premium'          => false,
-                'premium_suffix'      => 'Pro',
-                'has_premium_version' => true,
-                'has_addons'          => false,
-                'has_paid_plans'      => true,
+                'has_addons'          => true,
+                'has_paid_plans'      => false,
                 'is_org_compliant'    => true,
-                'wp_org_gatekeeper'   => 'OA7#BoRiBNqdf52FvzEf!!074aRLPs8fspif$7K1#4u4Csys1fQlCecVcUTOs2mcpeVHi#C2j9d09fOTvbC0HloPT7fFee5WdS3G',
-                'trial'               => array(
-                    'days'               => 7,
-                    'is_require_payment' => false,
-                ),
                 'menu'                => array(
-                    'slug'       => 'ai-content-filler',
-                    'first-path' => 'plugins.php',
-                    'parent'     => array(
-                        'slug' => 'options-general.php',
-                    ),
-                    'account'    => true,
-                    'contact'    => true,
-                    'support'    => false,
+                    'slug'        => 'textflow-ai',
+                    'first-path'  => 'options-general.php?page=textflow-ai',
+                    'account'     => true,
+                    'contact'     => false,
+                    'support'     => false,
                 ),
             ) );
         }
 
-        return $aicf_fs;
+        return $txflow_fs;
     }
 
-    // Init Freemius.
-    aicf_fs();
-    // Signal that SDK was initiated.
-    do_action( 'aicf_fs_loaded' );
+    // Initialiser Freemius maintenant
+    txflow_fs();
+
+    // Signal que Freemius est prêt
+    do_action( 'txflow_fs_loaded' );
 }

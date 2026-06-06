@@ -176,6 +176,54 @@
     toggleColorVisibility();
 
     // =========================================================================
+    // 6. Activation de licence existante (formulaire inline)
+    // =========================================================================
+
+    $( '#aicf-toggle-license-form' ).on( 'click', function () {
+        $( '#aicf-license-form' ).slideToggle( 150 );
+        $( '#aicf-license-key-input' ).focus();
+    } );
+
+    $( '#aicf-cancel-license-btn' ).on( 'click', function () {
+        $( '#aicf-license-form' ).slideUp( 150 );
+        $( '#aicf-license-key-input' ).val( '' );
+        $( '#aicf-license-result' ).text( '' ).attr( 'class', 'aicf-license-result' );
+    } );
+
+    $( '#aicf-activate-license-btn' ).on( 'click', function () {
+        var btn      = $( this );
+        var key      = $( '#aicf-license-key-input' ).val().trim();
+        var resultEl = $( '#aicf-license-result' );
+
+        if ( ! key ) {
+            resultEl.text( i18n.licenseEmpty ).attr( 'class', 'aicf-license-result aicf-license-result-error' );
+            return;
+        }
+
+        btn.prop( 'disabled', true ).text( i18n.licenseActivating );
+        resultEl.text( '' ).attr( 'class', 'aicf-license-result' );
+
+        $.post( aicfAdmin.ajaxUrl, {
+            action:      'aicf_activate_license',
+            nonce:       aicfAdmin.nonce,
+            license_key: key
+        } )
+        .done( function ( response ) {
+            if ( response.success ) {
+                resultEl.text( '✅ ' + response.data.message ).attr( 'class', 'aicf-license-result aicf-license-result-success' );
+                setTimeout( function () { window.location.reload(); }, 1800 );
+            } else {
+                resultEl.text( '❌ ' + response.data ).attr( 'class', 'aicf-license-result aicf-license-result-error' );
+                btn.prop( 'disabled', false ).text( i18n.licenseActivate );
+            }
+        } )
+        .fail( function () {
+            resultEl.text( '❌ ' + i18n.networkError ).attr( 'class', 'aicf-license-result aicf-license-result-error' );
+            btn.prop( 'disabled', false ).text( i18n.licenseActivate );
+        } );
+    } );
+
+    // =========================================================================
     // Utilitaire : échapper le HTML pour éviter les injections dans le DOM
     // =========================================================================
 

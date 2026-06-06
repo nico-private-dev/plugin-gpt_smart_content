@@ -3,23 +3,22 @@
  * Pont entre Elementor et le plugin.
  * - Enregistre l'endpoint REST API
  * - Injecte les scripts/styles dans l'éditeur Elementor
- * - Gère le rate limiting
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-class AICF_Elementor_Bridge {
+class TXFLOW_Elementor_Bridge {
 
-    /** @var AICF_Elementor_Bridge|null */
+    /** @var TXFLOW_Elementor_Bridge|null */
     private static $instance = null;
 
     /** Namespace de la REST API */
-    const REST_NAMESPACE = 'ai-content-filler/v1';
+    const REST_NAMESPACE = 'textflow-ai/v1';
 
     /** Clé du transient pour le rate limiting (préfixe + user_id) */
-    const RATE_LIMIT_PREFIX = 'aicf_rate_limit_';
+    const RATE_LIMIT_PREFIX = 'txflow_rate_limit_';
 
     /** Délai minimum entre deux appels (en secondes) */
     const RATE_LIMIT_SECONDS = 10;
@@ -39,7 +38,7 @@ class AICF_Elementor_Bridge {
     }
 
     /**
-     * Enregistre la route REST POST /wp-json/ai-content-filler/v1/generate
+     * Enregistre la route REST POST /wp-json/textflow-ai/v1/generate
      */
     public function register_routes() {
         register_rest_route( self::REST_NAMESPACE, '/generate', array(
@@ -82,29 +81,16 @@ class AICF_Elementor_Bridge {
      * @return WP_REST_Response|WP_Error
      */
     public function handle_generate_request( WP_REST_Request $request ) {
-        // --- Limite quotidienne (plan gratuit) ---
-        if ( AICF_License::is_daily_limit_reached() ) {
-            return new WP_Error(
-                'aicf_daily_limit',
-                sprintf(
-                    /* translators: %d: daily generation limit for free plan */
-                    __( 'Limite quotidienne atteinte (%d générations/jour en plan gratuit). Passez en Pro pour des générations illimitées.', 'ai-content-filler' ),
-                    AICF_License::FREE_DAILY_LIMIT
-                ),
-                array( 'status' => 429 )
-            );
-        }
-
         // --- Rate limiting ---
-        $user_id        = get_current_user_id();
-        $transient_key  = self::RATE_LIMIT_PREFIX . $user_id;
+        $user_id       = get_current_user_id();
+        $transient_key = self::RATE_LIMIT_PREFIX . $user_id;
 
         if ( get_transient( $transient_key ) ) {
             return new WP_Error(
-                'aicf_rate_limited',
+                'txflow_rate_limited',
                 sprintf(
                     /* translators: %d: number of seconds to wait between requests */
-                    __( 'Veuillez patienter %d secondes entre chaque génération.', 'ai-content-filler' ),
+                    __( 'Veuillez patienter %d secondes entre chaque génération.', 'textflow-ai' ),
                     self::RATE_LIMIT_SECONDS
                 ),
                 array( 'status' => 429 )
@@ -131,7 +117,7 @@ class AICF_Elementor_Bridge {
                 'type' => sanitize_text_field( $w['type'] ),
             );
 
-            // Nouveau format multi-champs
+            // Format multi-champs
             if ( isset( $w['fields'] ) && is_array( $w['fields'] ) ) {
                 $fields = array();
                 foreach ( $w['fields'] as $key => $value ) {
@@ -150,30 +136,14 @@ class AICF_Elementor_Bridge {
 
         if ( empty( $widgets ) ) {
             return new WP_Error(
-                'aicf_no_widgets',
-                __( 'Aucun widget valide trouvé dans la requête.', 'ai-content-filler' ),
+                'txflow_no_widgets',
+                __( 'Aucun widget valide trouvé dans la requête.', 'textflow-ai' ),
                 array( 'status' => 400 )
             );
         }
 
-        // --- Filtrage des widgets selon le plan (gratuit = types limités) ---
-        if ( ! aicf_is_pro() ) {
-            $allowed = AICF_License::FREE_WIDGETS;
-            $widgets = array_values( array_filter( $widgets, function( $w ) use ( $allowed ) {
-                return in_array( $w['type'], $allowed, true );
-            } ) );
-
-            if ( empty( $widgets ) ) {
-                return new WP_Error(
-                    'aicf_pro_widgets_only',
-                    __( 'Les types de widgets sélectionnés sont réservés au plan Pro.', 'ai-content-filler' ),
-                    array( 'status' => 403 )
-                );
-            }
-        }
-
-        // --- Appel à l'API IA (ton et style lus depuis les réglages) ---
-        $api_handler = new AICF_API_Handler();
+        // --- Appel à l'API IA ---
+        $api_handler = new TXFLOW_API_Handler();
         $result      = $api_handler->generate_content( $user_prompt, $widgets, $page_id );
 
         if ( is_wp_error( $result ) ) {
@@ -182,13 +152,9 @@ class AICF_Elementor_Bridge {
             return $result;
         }
 
-        // Incrémenter le compteur quotidien (plan gratuit)
-        AICF_License::increment_daily_count();
-
         return new WP_REST_Response( array(
-            'success'          => true,
-            'widgets'          => $result,
-            'dailyRemaining'   => AICF_License::get_remaining_generations(),
+            'success' => true,
+            'widgets' => $result,
         ), 200 );
     }
 
@@ -198,46 +164,35 @@ class AICF_Elementor_Bridge {
     public function enqueue_editor_assets() {
         // CSS du panneau
         wp_enqueue_style(
-            'aicf-editor-panel',
-            AICF_PLUGIN_URL . 'assets/css/editor-panel.css',
+            'txflow-editor-panel',
+            TXFLOW_PLUGIN_URL . 'assets/css/editor-panel.css',
             array(),
-            AICF_VERSION
+            TXFLOW_VERSION
         );
 
         // JS du panneau
         wp_enqueue_script(
-            'aicf-editor-panel',
-            AICF_PLUGIN_URL . 'assets/js/editor-panel.js',
+            'txflow-editor-panel',
+            TXFLOW_PLUGIN_URL . 'assets/js/editor-panel.js',
             array( 'jquery' ),
-            AICF_VERSION,
+            TXFLOW_VERSION,
             true
         );
 
-        // Variables JS (nonce, URL API, licence, etc.) — jamais la clé API !
-        $is_pro = aicf_is_pro();
-        wp_localize_script( 'aicf-editor-panel', 'aicfConfig', array(
-            'restUrl'    => esc_url_raw( rest_url( self::REST_NAMESPACE . '/generate' ) ),
-            'nonce'      => wp_create_nonce( 'wp_rest' ),
-            'isPro'      => $is_pro,
-            'upgradeUrl' => esc_url_raw( AICF_License::get_upgrade_url() ),
-            'freeWidgets'    => $is_pro ? array() : AICF_License::FREE_WIDGETS,
-            'freeTemplates'  => $is_pro ? array() : AICF_License::FREE_TEMPLATES,
-            'dailyRemaining' => AICF_License::get_remaining_generations(),
-            'dailyLimit'     => $is_pro ? -1 : AICF_License::FREE_DAILY_LIMIT,
-            'i18n'       => array(
-                'idle'           => __( 'Prêt à générer', 'ai-content-filler' ),
-                'loading'        => __( 'Génération en cours...', 'ai-content-filler' ),
-                'success'        => __( 'Contenu généré avec succès !', 'ai-content-filler' ),
-                'error'          => __( 'Erreur', 'ai-content-filler' ),
-                'no_widgets'     => __( 'Aucun widget avec du contenu texte trouvé sur cette page.', 'ai-content-filler' ),
-                'empty_prompt'   => __( 'Veuillez saisir un prompt.', 'ai-content-filler' ),
-                'no_api_key'     => __( 'Configurez votre clé API dans Réglages > TextFlow.', 'ai-content-filler' ),
-                'rate_limited'   => __( 'Veuillez patienter quelques secondes avant de relancer.', 'ai-content-filler' ),
-                'save_reminder'  => __( 'N\'oubliez pas de sauvegarder la page avec le bouton Elementor.', 'ai-content-filler' ),
-                'daily_limit'    => __( 'Limite quotidienne atteinte. Revenez demain ou passez en Pro.', 'ai-content-filler' ),
-                'pro_feature'    => __( 'Fonctionnalité Pro', 'ai-content-filler' ),
-                'upgrade'        => __( 'Passer en Pro', 'ai-content-filler' ),
-                'pro_widget'     => __( 'Ce type de widget est réservé au plan Pro.', 'ai-content-filler' ),
+        // Variables JS (nonce, URL API) — jamais la clé API !
+        wp_localize_script( 'txflow-editor-panel', 'aicfConfig', array(
+            'restUrl' => esc_url_raw( rest_url( self::REST_NAMESPACE . '/generate' ) ),
+            'nonce'   => wp_create_nonce( 'wp_rest' ),
+            'i18n'    => array(
+                'idle'          => __( 'Prêt à générer', 'textflow-ai' ),
+                'loading'       => __( 'Génération en cours...', 'textflow-ai' ),
+                'success'       => __( 'Contenu généré avec succès !', 'textflow-ai' ),
+                'error'         => __( 'Erreur', 'textflow-ai' ),
+                'no_widgets'    => __( 'Aucun widget avec du contenu texte trouvé sur cette page.', 'textflow-ai' ),
+                'empty_prompt'  => __( 'Veuillez saisir un prompt.', 'textflow-ai' ),
+                'no_api_key'    => __( 'Configurez votre clé API dans Réglages > TextFlow AI.', 'textflow-ai' ),
+                'rate_limited'  => __( 'Veuillez patienter quelques secondes avant de relancer.', 'textflow-ai' ),
+                'save_reminder' => __( 'N\'oubliez pas de sauvegarder la page avec le bouton Elementor.', 'textflow-ai' ),
             ),
         ) );
     }

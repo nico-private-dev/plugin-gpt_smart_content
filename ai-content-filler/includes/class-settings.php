@@ -1,26 +1,26 @@
 <?php
 /**
  * Gestion de la page de réglages admin du plugin.
- * Accessible via Paramètres > AI Content Filler.
+ * Accessible via Paramètres > TextFlow AI.
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-class AICF_Settings {
+class TXFLOW_Settings {
 
-    /** @var AICF_Settings|null */
+    /** @var TXFLOW_Settings|null */
     private static $instance = null;
 
     /** Préfixe pour toutes les options en base */
-    const OPTION_PREFIX = 'aicf_';
+    const OPTION_PREFIX = 'txflow_';
 
     /** Slug de la page de réglages */
-    const PAGE_SLUG = 'ai-content-filler';
+    const PAGE_SLUG = 'textflow-ai';
 
     /** Groupe d'options pour Settings API */
-    const OPTION_GROUP = 'aicf_settings_group';
+    const OPTION_GROUP = 'txflow_settings_group';
 
     /** Modèles disponibles par fournisseur */
     const MODELS = array(
@@ -56,7 +56,8 @@ class AICF_Settings {
         add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
         add_action( 'admin_init', array( $this, 'register_settings' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
-        add_action( 'wp_ajax_aicf_test_api', array( $this, 'ajax_test_api' ) );
+        add_action( 'wp_ajax_txflow_test_api', array( $this, 'ajax_test_api' ) );
+        add_action( 'wp_ajax_txflow_activate_license', array( $this, 'ajax_activate_license' ) );
 
         // Migration : ancienne clé unique → clé par fournisseur
         self::maybe_migrate_api_key();
@@ -67,8 +68,8 @@ class AICF_Settings {
      */
     public function add_settings_page() {
         add_options_page(
-            __( 'TextFlow', 'ai-content-filler' ),
-            __( 'TextFlow', 'ai-content-filler' ),
+            __( 'TextFlow', 'textflow-ai' ),
+            __( 'TextFlow', 'textflow-ai' ),
             'manage_options',
             self::PAGE_SLUG,
             array( $this, 'render_settings_page' )
@@ -79,37 +80,40 @@ class AICF_Settings {
      * Charge les assets CSS/JS uniquement sur la page de réglages du plugin.
      */
     public function enqueue_admin_assets( $hook ) {
-        if ( 'settings_page_ai-content-filler' !== $hook ) {
+        if ( 'settings_page_textflow-ai' !== $hook ) {
             return;
         }
         wp_enqueue_style( 'wp-color-picker' );
         wp_enqueue_style(
-            'aicf-admin-settings',
-            AICF_PLUGIN_URL . 'assets/css/admin-settings.css',
+            'txflow-admin-settings',
+            TXFLOW_PLUGIN_URL . 'assets/css/admin-settings.css',
             array( 'wp-color-picker' ),
-            AICF_VERSION
+            TXFLOW_VERSION
         );
         wp_enqueue_media();
         wp_enqueue_script(
-            'aicf-admin-settings',
-            AICF_PLUGIN_URL . 'assets/js/admin-settings.js',
+            'txflow-admin-settings',
+            TXFLOW_PLUGIN_URL . 'assets/js/admin-settings.js',
             array( 'jquery', 'media-upload', 'wp-color-picker' ),
-            AICF_VERSION,
+            TXFLOW_VERSION,
             true
         );
-        wp_localize_script( 'aicf-admin-settings', 'aicfAdmin', array(
+        wp_localize_script( 'txflow-admin-settings', 'aicfAdmin', array(
             'ajaxUrl'           => admin_url( 'admin-ajax.php' ),
-            'nonce'             => wp_create_nonce( 'aicf_admin_nonce' ),
+            'nonce'             => wp_create_nonce( 'txflow_admin_nonce' ),
             'models'            => self::MODELS,
             'currentProvider'   => self::get_provider(),
             'currentModel'      => self::get_model(),
-            'mediaTitle'        => __( 'Choisir le fichier de brief', 'ai-content-filler' ),
-            'mediaButton'       => __( 'Utiliser ce fichier', 'ai-content-filler' ),
+            'mediaTitle'        => __( 'Choisir le fichier de brief', 'textflow-ai' ),
+            'mediaButton'       => __( 'Utiliser ce fichier', 'textflow-ai' ),
             'currentAttachment' => self::get_brief_attachment_info(),
             'i18n' => array(
-                'testing'       => __( 'Test en cours…', 'ai-content-filler' ),
-                'testButton'    => __( 'Tester la connexion', 'ai-content-filler' ),
-                'networkError'  => __( 'Erreur réseau', 'ai-content-filler' ),
+                'testing'            => __( 'Test en cours…', 'textflow-ai' ),
+                'testButton'         => __( 'Tester la connexion', 'textflow-ai' ),
+                'networkError'       => __( 'Erreur réseau', 'textflow-ai' ),
+                'licenseActivate'    => __( 'Activer', 'textflow-ai' ),
+                'licenseActivating'  => __( 'Activation…', 'textflow-ai' ),
+                'licenseEmpty'       => __( 'Veuillez entrer une clé de licence.', 'textflow-ai' ),
             ),
         ) );
     }
@@ -123,8 +127,8 @@ class AICF_Settings {
         // SECTION 1 : Connexion API
         // =====================================================================
         add_settings_section(
-            'aicf_api_section',
-            __( 'Connexion API', 'ai-content-filler' ),
+            'txflow_api_section',
+            __( 'Connexion API', 'textflow-ai' ),
             '__return_false',
             self::PAGE_SLUG
         );
@@ -137,10 +141,10 @@ class AICF_Settings {
         ) );
         add_settings_field(
             self::OPTION_PREFIX . 'provider',
-            __( 'Fournisseur IA', 'ai-content-filler' ),
+            __( 'Fournisseur IA', 'textflow-ai' ),
             array( $this, 'render_provider_field' ),
             self::PAGE_SLUG,
-            'aicf_api_section'
+            'txflow_api_section'
         );
 
         // Clés API — une par fournisseur
@@ -153,10 +157,10 @@ class AICF_Settings {
         }
         add_settings_field(
             self::OPTION_PREFIX . 'api_keys',
-            __( 'Clé API', 'ai-content-filler' ),
+            __( 'Clé API', 'textflow-ai' ),
             array( $this, 'render_api_key_field' ),
             self::PAGE_SLUG,
-            'aicf_api_section'
+            'txflow_api_section'
         );
 
         // Modèle
@@ -167,18 +171,18 @@ class AICF_Settings {
         ) );
         add_settings_field(
             self::OPTION_PREFIX . 'model',
-            __( 'Modèle', 'ai-content-filler' ),
+            __( 'Modèle', 'textflow-ai' ),
             array( $this, 'render_model_field' ),
             self::PAGE_SLUG,
-            'aicf_api_section'
+            'txflow_api_section'
         );
 
         // =====================================================================
         // SECTION 2 : Paramètres de génération
         // =====================================================================
         add_settings_section(
-            'aicf_generation_section',
-            __( 'Paramètres de génération', 'ai-content-filler' ),
+            'txflow_generation_section',
+            __( 'Paramètres de génération', 'textflow-ai' ),
             '__return_false',
             self::PAGE_SLUG
         );
@@ -191,10 +195,10 @@ class AICF_Settings {
         ) );
         add_settings_field(
             self::OPTION_PREFIX . 'language',
-            __( 'Langue du contenu', 'ai-content-filler' ),
+            __( 'Langue du contenu', 'textflow-ai' ),
             array( $this, 'render_language_field' ),
             self::PAGE_SLUG,
-            'aicf_generation_section'
+            'txflow_generation_section'
         );
 
         // Température
@@ -205,10 +209,10 @@ class AICF_Settings {
         ) );
         add_settings_field(
             self::OPTION_PREFIX . 'temperature',
-            __( 'Température', 'ai-content-filler' ),
+            __( 'Température', 'textflow-ai' ),
             array( $this, 'render_temperature_field' ),
             self::PAGE_SLUG,
-            'aicf_generation_section'
+            'txflow_generation_section'
         );
 
         // Max tokens
@@ -219,18 +223,18 @@ class AICF_Settings {
         ) );
         add_settings_field(
             self::OPTION_PREFIX . 'max_tokens',
-            __( 'Longueur max (tokens)', 'ai-content-filler' ),
+            __( 'Longueur max (tokens)', 'textflow-ai' ),
             array( $this, 'render_max_tokens_field' ),
             self::PAGE_SLUG,
-            'aicf_generation_section'
+            'txflow_generation_section'
         );
 
         // =====================================================================
         // SECTION 3 : Style de rédaction
         // =====================================================================
         add_settings_section(
-            'aicf_style_section',
-            __( 'Style de rédaction', 'ai-content-filler' ),
+            'txflow_style_section',
+            __( 'Style de rédaction', 'textflow-ai' ),
             '__return_false',
             self::PAGE_SLUG
         );
@@ -243,10 +247,10 @@ class AICF_Settings {
         ) );
         add_settings_field(
             self::OPTION_PREFIX . 'tone',
-            __( 'Ton rédactionnel', 'ai-content-filler' ),
+            __( 'Ton rédactionnel', 'textflow-ai' ),
             array( $this, 'render_tone_field' ),
             self::PAGE_SLUG,
-            'aicf_style_section'
+            'txflow_style_section'
         );
 
         // Style des titres
@@ -257,10 +261,10 @@ class AICF_Settings {
         ) );
         add_settings_field(
             self::OPTION_PREFIX . 'heading_style',
-            __( 'Style des titres', 'ai-content-filler' ),
+            __( 'Style des titres', 'textflow-ai' ),
             array( $this, 'render_heading_style_field' ),
             self::PAGE_SLUG,
-            'aicf_style_section'
+            'txflow_style_section'
         );
 
         // Couleur d'accent pour les titres
@@ -271,18 +275,18 @@ class AICF_Settings {
         ) );
         add_settings_field(
             self::OPTION_PREFIX . 'heading_style_color',
-            __( 'Couleur d\'accent', 'ai-content-filler' ),
+            __( 'Couleur d\'accent', 'textflow-ai' ),
             array( $this, 'render_heading_style_color_field' ),
             self::PAGE_SLUG,
-            'aicf_style_section'
+            'txflow_style_section'
         );
 
         // =====================================================================
         // SECTION 4 : Brief client
         // =====================================================================
         add_settings_section(
-            'aicf_brief_section',
-            __( 'Brief client', 'ai-content-filler' ),
+            'txflow_brief_section',
+            __( 'Brief client', 'textflow-ai' ),
             '__return_false',
             self::PAGE_SLUG
         );
@@ -295,10 +299,10 @@ class AICF_Settings {
         ) );
         add_settings_field(
             self::OPTION_PREFIX . 'client_brief',
-            __( 'Brief textuel', 'ai-content-filler' ),
+            __( 'Brief textuel', 'textflow-ai' ),
             array( $this, 'render_client_brief_field' ),
             self::PAGE_SLUG,
-            'aicf_brief_section'
+            'txflow_brief_section'
         );
 
         // Brief fichier
@@ -309,10 +313,10 @@ class AICF_Settings {
         ) );
         add_settings_field(
             self::OPTION_PREFIX . 'brief_attachment_id',
-            __( 'Fichier de brief', 'ai-content-filler' ),
+            __( 'Fichier de brief', 'textflow-ai' ),
             array( $this, 'render_brief_file_field' ),
             self::PAGE_SLUG,
-            'aicf_brief_section'
+            'txflow_brief_section'
         );
     }
 
@@ -324,7 +328,7 @@ class AICF_Settings {
      * Retourne le badge HTML "PRO" pour les champs réservés au plan payant.
      */
     private static function pro_badge() {
-        if ( aicf_is_pro() ) {
+        if ( true ) {
             return '';
         }
         return ' <span class="aicf-pro-badge">PRO</span>';
@@ -334,13 +338,13 @@ class AICF_Settings {
      * Retourne le lien d'upgrade HTML.
      */
     private static function upgrade_link( $text = '' ) {
-        if ( aicf_is_pro() ) {
+        if ( true ) {
             return '';
         }
         if ( empty( $text ) ) {
-            $text = __( 'Passer en Pro', 'ai-content-filler' );
+            $text = __( 'Passer en Pro', 'textflow-ai' );
         }
-        return ' <a href="' . esc_url( AICF_License::get_upgrade_url() ) . '" class="aicf-upgrade-link">' . esc_html( $text ) . ' &rarr;</a>';
+        return ' <a href="' . esc_url( '#' ) . '" class="aicf-upgrade-link">' . esc_html( $text ) . ' &rarr;</a>';
     }
 
     public function render_provider_field() {
@@ -348,17 +352,17 @@ class AICF_Settings {
         $providers = array(
             'anthropic' => array(
                 'label' => 'Anthropic Claude',
-                'desc'  => __( 'Claude Sonnet, Haiku, Opus', 'ai-content-filler' ),
+                'desc'  => __( 'Claude Sonnet, Haiku, Opus', 'textflow-ai' ),
                 'icon'  => '🧠',
             ),
             'openai' => array(
                 'label' => 'OpenAI ChatGPT',
-                'desc'  => __( 'GPT-4o et variantes', 'ai-content-filler' ),
+                'desc'  => __( 'GPT-4o et variantes', 'textflow-ai' ),
                 'icon'  => '💬',
             ),
             'deepseek' => array(
                 'label' => 'DeepSeek',
-                'desc'  => __( 'Chat & Reasoner R1', 'ai-content-filler' ),
+                'desc'  => __( 'Chat & Reasoner R1', 'textflow-ai' ),
                 'icon'  => '🔍',
             ),
         );
@@ -379,16 +383,16 @@ class AICF_Settings {
             </label>
             <?php endforeach; ?>
         </div>
-        <p class="description"><?php esc_html_e( 'Chaque fournisseur requiert sa propre clé API.', 'ai-content-filler' ); ?></p>
+        <p class="description"><?php esc_html_e( 'Chaque fournisseur requiert sa propre clé API.', 'textflow-ai' ); ?></p>
         <?php
     }
 
     public function render_api_key_field() {
         $current_provider = self::get_provider();
         $hints            = array(
-            'anthropic' => __( 'Commence par sk-ant-... — Disponible sur console.anthropic.com', 'ai-content-filler' ),
-            'openai'    => __( 'Commence par sk-... — Disponible sur platform.openai.com', 'ai-content-filler' ),
-            'deepseek'  => __( 'Disponible sur platform.deepseek.com', 'ai-content-filler' ),
+            'anthropic' => __( 'Commence par sk-ant-... — Disponible sur console.anthropic.com', 'textflow-ai' ),
+            'openai'    => __( 'Commence par sk-... — Disponible sur platform.openai.com', 'textflow-ai' ),
+            'deepseek'  => __( 'Disponible sur platform.deepseek.com', 'textflow-ai' ),
         );
 
         // Un champ input par fournisseur, seul celui du provider actif est visible
@@ -412,12 +416,12 @@ class AICF_Settings {
                     type="button"
                     class="button aicf-toggle-key"
                     data-target="<?php echo esc_attr( $option_name ); ?>"
-                    title="<?php esc_attr_e( 'Afficher / masquer', 'ai-content-filler' ); ?>"
+                    title="<?php esc_attr_e( 'Afficher / masquer', 'textflow-ai' ); ?>"
                 >
                     <span class="dashicons dashicons-visibility"></span>
                 </button>
                 <button type="button" class="button aicf-test-api aicf-test-api-btn">
-                    <?php esc_html_e( 'Tester la connexion', 'ai-content-filler' ); ?>
+                    <?php esc_html_e( 'Tester la connexion', 'textflow-ai' ); ?>
                 </button>
                 <span class="aicf-test-result"></span>
             </div>
@@ -443,14 +447,14 @@ class AICF_Settings {
             </option>
             <?php endforeach; ?>
         </select>
-        <p class="description"><?php esc_html_e( 'La liste de modèles se met à jour automatiquement selon le fournisseur sélectionné.', 'ai-content-filler' ); ?></p>
+        <p class="description"><?php esc_html_e( 'La liste de modèles se met à jour automatiquement selon le fournisseur sélectionné.', 'textflow-ai' ); ?></p>
         <?php
     }
 
     public function render_language_field() {
         $value     = self::get_language();
-        $is_pro    = aicf_is_pro();
-        $free_langs = AICF_License::FREE_LANGUAGES;
+        $is_pro    = true;
+        $free_langs = array();
         $languages = array(
             'fr' => '🇫🇷 Français',
             'en' => '🇬🇧 English',
@@ -475,9 +479,9 @@ class AICF_Settings {
         }
         echo '</select>';
         if ( ! $is_pro ) {
-            echo '<p class="description">' . esc_html__( 'Français et anglais en version gratuite.', 'ai-content-filler' ) . wp_kses_post( self::upgrade_link( __( 'Débloquer toutes les langues', 'ai-content-filler' ) ) ) . '</p>';
+            echo '<p class="description">' . esc_html__( 'Français et anglais en version gratuite.', 'textflow-ai' ) . wp_kses_post( self::upgrade_link( __( 'Débloquer toutes les langues', 'textflow-ai' ) ) ) . '</p>';
         } else {
-            echo '<p class="description">' . esc_html__( 'Langue par défaut du contenu généré. L\'utilisateur peut la surcharger dans son prompt.', 'ai-content-filler' ) . '</p>';
+            echo '<p class="description">' . esc_html__( 'Langue par défaut du contenu généré. L\'utilisateur peut la surcharger dans son prompt.', 'textflow-ai' ) . '</p>';
         }
     }
 
@@ -488,7 +492,7 @@ class AICF_Settings {
              <p class="description">%3$s</p>',
             esc_attr( self::OPTION_PREFIX . 'temperature' ),
             esc_attr( $value ),
-            esc_html__( '0 = très factuel, 1 = très créatif. Recommandé : 0.7', 'ai-content-filler' )
+            esc_html__( '0 = très factuel, 1 = très créatif. Recommandé : 0.7', 'textflow-ai' )
         );
     }
 
@@ -499,7 +503,7 @@ class AICF_Settings {
              <p class="description">%3$s</p>',
             esc_attr( self::OPTION_PREFIX . 'max_tokens' ),
             esc_attr( $value ),
-            esc_html__( 'Nombre minimum de tokens alloués. Le plugin ajuste automatiquement selon le nombre de widgets (400 tokens/widget). 2000 ≈ ~1500 mots.', 'ai-content-filler' )
+            esc_html__( 'Nombre minimum de tokens alloués. Le plugin ajuste automatiquement selon le nombre de widgets (400 tokens/widget). 2000 ≈ ~1500 mots.', 'textflow-ai' )
         );
     }
 
@@ -510,13 +514,13 @@ class AICF_Settings {
              <p class="description">%3$s</p>',
             esc_attr( self::OPTION_PREFIX . 'client_brief' ),
             esc_textarea( $value ),
-            esc_html__( 'Décrivez le contexte métier : activité, ton éditorial, cible, valeurs, mots-clés importants. Ce texte sera injecté comme contexte pour guider la rédaction.', 'ai-content-filler' ),
-            esc_attr__( 'Ex : Entreprise spécialisée dans le conseil RH, ton professionnel et chaleureux, cible PME de 10 à 200 salariés…', 'ai-content-filler' )
+            esc_html__( 'Décrivez le contexte métier : activité, ton éditorial, cible, valeurs, mots-clés importants. Ce texte sera injecté comme contexte pour guider la rédaction.', 'textflow-ai' ),
+            esc_attr__( 'Ex : Entreprise spécialisée dans le conseil RH, ton professionnel et chaleureux, cible PME de 10 à 200 salariés…', 'textflow-ai' )
         );
     }
 
     public function render_brief_file_field() {
-        $is_pro        = aicf_is_pro();
+        $is_pro        = true;
         $attachment_id = absint( get_option( self::OPTION_PREFIX . 'brief_attachment_id', 0 ) );
         $info          = $is_pro ? self::get_brief_attachment_info() : null;
         ?>
@@ -533,15 +537,15 @@ class AICF_Settings {
                 <span class="aicf-file-icon">📄</span>
                 <span class="aicf-file-name"><?php echo esc_html( $info['filename'] ); ?></span>
                 <span class="aicf-file-type"><?php echo esc_html( strtoupper( $info['ext'] ) ); ?></span>
-                <button type="button" class="aicf-remove-file" id="aicf-remove-file" title="<?php esc_attr_e( 'Supprimer', 'ai-content-filler' ); ?>">✕</button>
+                <button type="button" class="aicf-remove-file" id="aicf-remove-file" title="<?php esc_attr_e( 'Supprimer', 'textflow-ai' ); ?>">✕</button>
                 <?php endif; ?>
             </div>
             <button type="button" class="button aicf-select-file" id="aicf-select-file-btn">
-                📎 <?php esc_html_e( 'Choisir un fichier (PDF, TXT, MD)', 'ai-content-filler' ); ?>
+                📎 <?php esc_html_e( 'Choisir un fichier (PDF, TXT, MD)', 'textflow-ai' ); ?>
             </button>
-            <p class="description"><?php esc_html_e( 'Importez un fichier de brief. Son contenu sera extrait et combiné avec le brief textuel ci-dessus.', 'ai-content-filler' ); ?></p>
+            <p class="description"><?php esc_html_e( 'Importez un fichier de brief. Son contenu sera extrait et combiné avec le brief textuel ci-dessus.', 'textflow-ai' ); ?></p>
             <?php else : ?>
-            <p class="description"><?php echo wp_kses_post( self::pro_badge() ) . ' ' . esc_html__( 'Importez un brief au format PDF, TXT ou MD.', 'ai-content-filler' ) . wp_kses_post( self::upgrade_link() ); ?></p>
+            <p class="description"><?php echo wp_kses_post( self::pro_badge() ) . ' ' . esc_html__( 'Importez un brief au format PDF, TXT ou MD.', 'textflow-ai' ) . wp_kses_post( self::upgrade_link() ); ?></p>
             <?php endif; ?>
         </div>
         <?php
@@ -549,13 +553,13 @@ class AICF_Settings {
 
     public function render_tone_field() {
         $value  = self::get_tone();
-        $is_pro = aicf_is_pro();
+        $is_pro = true;
         $tones  = array(
-            ''             => __( 'Par défaut (neutre)', 'ai-content-filler' ),
-            'professional' => __( 'Professionnel — sérieux, rassurant', 'ai-content-filler' ),
-            'casual'       => __( 'Décontracté — amical, accessible', 'ai-content-filler' ),
-            'commercial'   => __( 'Commercial — persuasif, orienté bénéfices', 'ai-content-filler' ),
-            'technical'    => __( 'Technique — expert, précis', 'ai-content-filler' ),
+            ''             => __( 'Par défaut (neutre)', 'textflow-ai' ),
+            'professional' => __( 'Professionnel — sérieux, rassurant', 'textflow-ai' ),
+            'casual'       => __( 'Décontracté — amical, accessible', 'textflow-ai' ),
+            'commercial'   => __( 'Commercial — persuasif, orienté bénéfices', 'textflow-ai' ),
+            'technical'    => __( 'Technique — expert, précis', 'textflow-ai' ),
         );
 
         echo '<select id="' . esc_attr( self::OPTION_PREFIX . 'tone' ) . '" name="' . esc_attr( self::OPTION_PREFIX . 'tone' ) . '" class="regular-text"' . ( $is_pro ? '' : ' disabled="disabled"' ) . '>';
@@ -572,20 +576,20 @@ class AICF_Settings {
             // Champ caché pour conserver la valeur par défaut
             echo '<input type="hidden" name="' . esc_attr( self::OPTION_PREFIX . 'tone' ) . '" value="" />';
             echo wp_kses_post( self::pro_badge() );
-            echo '<p class="description">' . esc_html__( 'Personnalisez le ton rédactionnel du contenu.', 'ai-content-filler' ) . wp_kses_post( self::upgrade_link() ) . '</p>';
+            echo '<p class="description">' . esc_html__( 'Personnalisez le ton rédactionnel du contenu.', 'textflow-ai' ) . wp_kses_post( self::upgrade_link() ) . '</p>';
         } else {
-            echo '<p class="description">' . esc_html__( 'Le ton sera appliqué à tout le contenu généré sur le site.', 'ai-content-filler' ) . '</p>';
+            echo '<p class="description">' . esc_html__( 'Le ton sera appliqué à tout le contenu généré sur le site.', 'textflow-ai' ) . '</p>';
         }
     }
 
     public function render_heading_style_field() {
         $value   = self::get_heading_style();
-        $is_pro  = aicf_is_pro();
+        $is_pro  = true;
         $styles  = array(
-            'none'      => __( 'Normal — texte brut', 'ai-content-filler' ),
-            'highlight' => __( 'Surlignement — effet marqueur sur les mots-clés', 'ai-content-filler' ),
-            'underline' => __( 'Soulignement — trait d\'accent sous les mots-clés', 'ai-content-filler' ),
-            'color'     => __( 'Couleur — mots-clés en couleur d\'accent', 'ai-content-filler' ),
+            'none'      => __( 'Normal — texte brut', 'textflow-ai' ),
+            'highlight' => __( 'Surlignement — effet marqueur sur les mots-clés', 'textflow-ai' ),
+            'underline' => __( 'Soulignement — trait d\'accent sous les mots-clés', 'textflow-ai' ),
+            'color'     => __( 'Couleur — mots-clés en couleur d\'accent', 'textflow-ai' ),
         );
 
         echo '<select id="' . esc_attr( self::OPTION_PREFIX . 'heading_style' ) . '" name="' . esc_attr( self::OPTION_PREFIX . 'heading_style' ) . '" class="regular-text"' . ( $is_pro ? '' : ' disabled="disabled"' ) . '>';
@@ -601,15 +605,15 @@ class AICF_Settings {
         if ( ! $is_pro ) {
             echo '<input type="hidden" name="' . esc_attr( self::OPTION_PREFIX . 'heading_style' ) . '" value="none" />';
             echo wp_kses_post( self::pro_badge() );
-            echo '<p class="description">' . esc_html__( 'Ajoutez des effets visuels sur les mots-clés de vos titres.', 'ai-content-filler' ) . wp_kses_post( self::upgrade_link() ) . '</p>';
+            echo '<p class="description">' . esc_html__( 'Ajoutez des effets visuels sur les mots-clés de vos titres.', 'textflow-ai' ) . wp_kses_post( self::upgrade_link() ) . '</p>';
         } else {
-            echo '<p class="description">' . esc_html__( 'L\'IA ajoutera du HTML inline sur 1 à 2 mots-clés dans chaque titre pour créer l\'effet choisi.', 'ai-content-filler' ) . '</p>';
+            echo '<p class="description">' . esc_html__( 'L\'IA ajoutera du HTML inline sur 1 à 2 mots-clés dans chaque titre pour créer l\'effet choisi.', 'textflow-ai' ) . '</p>';
         }
     }
 
     public function render_heading_style_color_field() {
         $value          = self::get_heading_style_color();
-        $is_pro         = aicf_is_pro();
+        $is_pro         = true;
         $global_colors  = self::get_elementor_global_colors();
         ?>
         <div class="aicf-color-field-wrap <?php echo $is_pro ? '' : esc_attr( 'aicf-pro-locked' ); ?>">
@@ -624,7 +628,7 @@ class AICF_Settings {
             />
             <?php if ( ! empty( $global_colors ) && $is_pro ) : ?>
             <div class="aicf-global-colors">
-                <span class="aicf-global-colors-label"><?php esc_html_e( 'Couleurs du site (Elementor) :', 'ai-content-filler' ); ?></span>
+                <span class="aicf-global-colors-label"><?php esc_html_e( 'Couleurs du site (Elementor) :', 'textflow-ai' ); ?></span>
                 <div class="aicf-global-colors-swatches">
                     <?php foreach ( $global_colors as $gc ) : ?>
                     <button
@@ -640,9 +644,9 @@ class AICF_Settings {
             <?php endif; ?>
         </div>
         <?php if ( ! $is_pro ) : ?>
-            <p class="description"><?php echo wp_kses_post( self::pro_badge() ) . ' ' . esc_html__( 'Personnalisez la couleur d\'accent des titres.', 'ai-content-filler' ); ?></p>
+            <p class="description"><?php echo wp_kses_post( self::pro_badge() ) . ' ' . esc_html__( 'Personnalisez la couleur d\'accent des titres.', 'textflow-ai' ); ?></p>
         <?php else : ?>
-            <p class="description"><?php esc_html_e( 'Couleur utilisée pour le surlignement, soulignement ou coloration des mots-clés dans les titres.', 'ai-content-filler' ); ?></p>
+            <p class="description"><?php esc_html_e( 'Couleur utilisée pour le surlignement, soulignement ou coloration des mots-clés dans les titres.', 'textflow-ai' ); ?></p>
         <?php endif;
     }
 
@@ -680,10 +684,10 @@ class AICF_Settings {
     // ------------------------------------------------------------------
 
     public function ajax_test_api() {
-        check_ajax_referer( 'aicf_admin_nonce', 'nonce' );
+        check_ajax_referer( 'txflow_admin_nonce', 'nonce' );
 
         if ( ! current_user_can( 'manage_options' ) ) {
-            wp_send_json_error( __( 'Permission refusée.', 'ai-content-filler' ) );
+            wp_send_json_error( __( 'Permission refusée.', 'textflow-ai' ) );
         }
 
         $provider = isset( $_POST['provider'] ) ? sanitize_text_field( wp_unslash( $_POST['provider'] ) ) : 'anthropic';
@@ -691,16 +695,21 @@ class AICF_Settings {
         $model    = isset( $_POST['model'] )     ? sanitize_text_field( wp_unslash( $_POST['model'] ) )    : '';
 
         if ( empty( $api_key ) ) {
-            wp_send_json_error( __( 'Veuillez saisir une clé API avant de tester.', 'ai-content-filler' ) );
+            wp_send_json_error( __( 'Veuillez saisir une clé API avant de tester.', 'textflow-ai' ) );
         }
 
-        $result = AICF_API_Handler::test_connection( $provider, $api_key, $model );
+        $result = TXFLOW_API_Handler::test_connection( $provider, $api_key, $model );
 
         if ( is_wp_error( $result ) ) {
             wp_send_json_error( $result->get_error_message() );
         }
 
-        wp_send_json_success( __( 'Connexion réussie !', 'ai-content-filler' ) );
+        wp_send_json_success( __( 'Connexion réussie !', 'textflow-ai' ) );
+    }
+
+    public function ajax_activate_license() {
+        // Freemius removed — no license activation needed.
+        wp_send_json_error( __( 'Activation de licence non disponible.', 'textflow-ai' ) );
     }
 
     // ------------------------------------------------------------------
@@ -718,26 +727,11 @@ class AICF_Settings {
             <div class="aicf-settings-header">
                 <div class="aicf-header-icon">✨</div>
                 <div>
-                    <h1 class="aicf-header-title"><?php esc_html_e( 'TextFlow', 'ai-content-filler' ); ?></h1>
-                    <p class="aicf-header-subtitle"><?php esc_html_e( 'Générez du contenu intelligent pour vos pages Elementor et Gutenberg', 'ai-content-filler' ); ?></p>
+                    <h1 class="aicf-header-title"><?php esc_html_e( 'TextFlow', 'textflow-ai' ); ?></h1>
+                    <p class="aicf-header-subtitle"><?php esc_html_e( 'Générez du contenu intelligent pour vos pages Elementor et Gutenberg', 'textflow-ai' ); ?></p>
                 </div>
             </div>
 
-            <?php if ( ! aicf_is_pro() ) : ?>
-            <div class="aicf-notice aicf-notice-upgrade">
-                <div class="aicf-notice-upgrade-content">
-                    <strong><?php esc_html_e( 'Version gratuite', 'ai-content-filler' ); ?></strong> —
-                    <?php printf(
-                        /* translators: %d: daily generation limit */
-                        esc_html__( '%d générations/jour, 5 types de widgets, 2 templates. ', 'ai-content-filler' ),
-                        absint( AICF_License::FREE_DAILY_LIMIT )
-                    ); ?>
-                    <a href="<?php echo esc_url( AICF_License::get_upgrade_url() ); ?>" class="aicf-upgrade-link">
-                        <?php esc_html_e( 'Passer en Pro pour tout débloquer', 'ai-content-filler' ); ?> &rarr;
-                    </a>
-                </div>
-            </div>
-            <?php endif; ?>
 
             <?php if ( empty( $api_key ) ) :
                 $provider_labels = array( 'anthropic' => 'Anthropic Claude', 'openai' => 'OpenAI', 'deepseek' => 'DeepSeek' );
@@ -746,7 +740,7 @@ class AICF_Settings {
             <div class="aicf-notice aicf-notice-warning">
                 <?php printf(
                     /* translators: %s: provider name (e.g. "Anthropic Claude") */
-                    esc_html__( 'Aucune clé API configurée pour %s. Le plugin ne pourra pas générer de contenu.', 'ai-content-filler' ),
+                    esc_html__( 'Aucune clé API configurée pour %s. Le plugin ne pourra pas générer de contenu.', 'textflow-ai' ),
                     '<strong>' . esc_html( $current_label ) . '</strong>'
                 ); ?>
             </div>
@@ -758,11 +752,11 @@ class AICF_Settings {
                 <!-- Section 1 : Connexion API -->
                 <div class="aicf-card">
                     <div class="aicf-card-header">
-                        <h2><?php esc_html_e( 'Connexion API', 'ai-content-filler' ); ?></h2>
+                        <h2><?php esc_html_e( 'Connexion API', 'textflow-ai' ); ?></h2>
                     </div>
                     <div class="aicf-card-body">
                         <table class="form-table" role="presentation">
-                            <?php do_settings_fields( self::PAGE_SLUG, 'aicf_api_section' ); ?>
+                            <?php do_settings_fields( self::PAGE_SLUG, 'txflow_api_section' ); ?>
                         </table>
                     </div>
                 </div>
@@ -770,11 +764,11 @@ class AICF_Settings {
                 <!-- Section 2 : Paramètres de génération -->
                 <div class="aicf-card">
                     <div class="aicf-card-header">
-                        <h2><?php esc_html_e( 'Paramètres de génération', 'ai-content-filler' ); ?></h2>
+                        <h2><?php esc_html_e( 'Paramètres de génération', 'textflow-ai' ); ?></h2>
                     </div>
                     <div class="aicf-card-body">
                         <table class="form-table" role="presentation">
-                            <?php do_settings_fields( self::PAGE_SLUG, 'aicf_generation_section' ); ?>
+                            <?php do_settings_fields( self::PAGE_SLUG, 'txflow_generation_section' ); ?>
                         </table>
                     </div>
                 </div>
@@ -782,12 +776,12 @@ class AICF_Settings {
                 <!-- Section 3 : Style de rédaction -->
                 <div class="aicf-card">
                     <div class="aicf-card-header">
-                        <h2><?php esc_html_e( 'Style de rédaction', 'ai-content-filler' ); ?></h2>
+                        <h2><?php esc_html_e( 'Style de rédaction', 'textflow-ai' ); ?></h2>
                     </div>
                     <div class="aicf-card-body">
-                        <p class="aicf-section-desc"><?php esc_html_e( 'Ces paramètres s\'appliquent à tout le contenu généré sur le site, quel que soit la page.', 'ai-content-filler' ); ?></p>
+                        <p class="aicf-section-desc"><?php esc_html_e( 'Ces paramètres s\'appliquent à tout le contenu généré sur le site, quel que soit la page.', 'textflow-ai' ); ?></p>
                         <table class="form-table" role="presentation">
-                            <?php do_settings_fields( self::PAGE_SLUG, 'aicf_style_section' ); ?>
+                            <?php do_settings_fields( self::PAGE_SLUG, 'txflow_style_section' ); ?>
                         </table>
                     </div>
                 </div>
@@ -795,18 +789,71 @@ class AICF_Settings {
                 <!-- Section 4 : Brief client -->
                 <div class="aicf-card">
                     <div class="aicf-card-header">
-                        <h2><?php esc_html_e( 'Brief client', 'ai-content-filler' ); ?></h2>
+                        <h2><?php esc_html_e( 'Brief client', 'textflow-ai' ); ?></h2>
                     </div>
                     <div class="aicf-card-body">
-                        <p class="aicf-section-desc"><?php esc_html_e( 'Le brief est injecté comme contexte système pour guider la rédaction. Vous pouvez saisir votre brief directement et/ou importer un fichier (PDF, TXT, MD).', 'ai-content-filler' ); ?></p>
+                        <p class="aicf-section-desc"><?php esc_html_e( 'Le brief est injecté comme contexte système pour guider la rédaction. Vous pouvez saisir votre brief directement et/ou importer un fichier (PDF, TXT, MD).', 'textflow-ai' ); ?></p>
                         <table class="form-table" role="presentation">
-                            <?php do_settings_fields( self::PAGE_SLUG, 'aicf_brief_section' ); ?>
+                            <?php do_settings_fields( self::PAGE_SLUG, 'txflow_brief_section' ); ?>
                         </table>
                     </div>
                 </div>
 
-                <?php submit_button( __( 'Enregistrer les réglages', 'ai-content-filler' ) ); ?>
+                <?php submit_button( __( 'Enregistrer les réglages', 'textflow-ai' ) ); ?>
             </form>
+
+            <?php if ( ! defined( 'TXFLOW_PRO_VERSION' ) ) : ?>
+            <!-- Section Pro (teaser — visible uniquement si le plugin Pro n'est pas installé) -->
+            <div class="aicf-card aicf-pro-teaser-card" style="margin-top:24px; border:2px solid #6366f1;">
+                <div class="aicf-card-header" style="background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff; border-radius:4px 4px 0 0;">
+                    <h2 style="color:#fff; margin:0;">
+                        ✨ <?php esc_html_e( 'TextFlow AI Pro', 'textflow-ai' ); ?>
+                        <span style="font-size:12px; font-weight:400; opacity:.85; margin-left:8px;"><?php esc_html_e( 'Plugin add-on — installez-le en plus du plugin gratuit', 'textflow-ai' ); ?></span>
+                    </h2>
+                </div>
+                <div class="aicf-card-body">
+                    <p style="color:#6b7280; margin-bottom:20px;"><?php esc_html_e( 'Débloquez des fonctionnalités avancées pour accélérer votre production de contenu.', 'textflow-ai' ); ?></p>
+                    <div class="txflow-pro-features" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px;">
+
+                        <div class="txflow-pro-feature" style="border:1px solid #e5e7eb; border-radius:8px; padding:16px;">
+                            <div style="font-size:24px; margin-bottom:8px;">🎯</div>
+                            <h3 style="font-size:14px; font-weight:600; margin:0 0 6px;"><?php esc_html_e( 'Brand Voice', 'textflow-ai' ); ?></h3>
+                            <p style="font-size:13px; color:#6b7280; margin:0;"><?php esc_html_e( 'Enregistrez un profil de marque (ton, style, industrie) appliqué automatiquement à chaque génération.', 'textflow-ai' ); ?></p>
+                        </div>
+
+                        <div class="txflow-pro-feature" style="border:1px solid #e5e7eb; border-radius:8px; padding:16px;">
+                            <div style="font-size:24px; margin-bottom:8px;">⚡</div>
+                            <h3 style="font-size:14px; font-weight:600; margin:0 0 6px;"><?php esc_html_e( 'Génération en masse', 'textflow-ai' ); ?></h3>
+                            <p style="font-size:13px; color:#6b7280; margin:0;"><?php esc_html_e( 'Générez le contenu de plusieurs pages ou articles en une seule opération.', 'textflow-ai' ); ?></p>
+                        </div>
+
+                        <div class="txflow-pro-feature" style="border:1px solid #e5e7eb; border-radius:8px; padding:16px;">
+                            <div style="font-size:24px; margin-bottom:8px;">📋</div>
+                            <h3 style="font-size:14px; font-weight:600; margin:0 0 6px;"><?php esc_html_e( 'Templates personnalisés', 'textflow-ai' ); ?></h3>
+                            <p style="font-size:13px; color:#6b7280; margin:0;"><?php esc_html_e( 'Créez et réutilisez vos propres prompts dans l\'éditeur Elementor et Gutenberg.', 'textflow-ai' ); ?></p>
+                        </div>
+
+                        <div class="txflow-pro-feature" style="border:1px solid #e5e7eb; border-radius:8px; padding:16px;">
+                            <div style="font-size:24px; margin-bottom:8px;">🕒</div>
+                            <h3 style="font-size:14px; font-weight:600; margin:0 0 6px;"><?php esc_html_e( 'Historique des générations', 'textflow-ai' ); ?></h3>
+                            <p style="font-size:13px; color:#6b7280; margin:0;"><?php esc_html_e( 'Retrouvez et restaurez n\'importe quelle version précédente de votre contenu.', 'textflow-ai' ); ?></p>
+                        </div>
+
+                        <div class="txflow-pro-feature" style="border:1px solid #e5e7eb; border-radius:8px; padding:16px;">
+                            <div style="font-size:24px; margin-bottom:8px;">🔍</div>
+                            <h3 style="font-size:14px; font-weight:600; margin:0 0 6px;"><?php esc_html_e( 'Méta SEO automatique', 'textflow-ai' ); ?></h3>
+                            <p style="font-size:13px; color:#6b7280; margin:0;"><?php esc_html_e( 'Générez le titre SEO et la méta-description pour Yoast, RankMath ou AIOSEO.', 'textflow-ai' ); ?></p>
+                        </div>
+
+                    </div>
+                    <div style="margin-top:20px; text-align:center;">
+                        <a href="https://textflowlab.com/pro" target="_blank" rel="noopener" class="button button-primary" style="background:#6366f1; border-color:#6366f1; font-size:14px; padding:8px 24px; height:auto;">
+                            <?php esc_html_e( '→ Obtenir TextFlow AI Pro', 'textflow-ai' ); ?>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
 
         </div>
         <?php
